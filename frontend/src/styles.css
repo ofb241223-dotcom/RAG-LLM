@@ -989,7 +989,7 @@ button {
 
 .document-table-panel {
   display: grid;
-  min-height: 386px;
+  min-height: clamp(460px, calc(100vh - 455px), 520px);
   padding: 0;
   overflow: hidden;
 }
