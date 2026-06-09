@@ -1,0 +1,45 @@
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+application-local.yml
+application-local.properties
+
+# Node / frontend
+node_modules/
+dist/
+coverage/
+.vite/
+*.tsbuildinfo
+
+# Java / Spring Boot
+target/
+.mvn/wrapper/maven-wrapper.jar
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+
+# Runtime data
+uploads/
+storage/
+chroma/
+chroma_db/
+rag_data/
+*.sqlite
+*.sqlite3
+*.db
+
+# IDE and OS
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
+
+# Local source/reference documents not needed in public repo
+2026综合实训一课程设计指导书.doc
