@@ -1,8 +1,25 @@
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import App from './App';
 
 describe('App shell', () => {
-  it('renders the high-fidelity dashboard navigation and content sections', () => {
+  beforeEach(() => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: false,
+        status: 503,
+        headers: new Headers({ 'content-type': 'application/json' }),
+        json: async () => ({ message: 'backend unavailable' }),
+        text: async () => JSON.stringify({ message: 'backend unavailable' }),
+      })),
+    );
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('renders the dashboard shell and switches feature views with local state', async () => {
     render(<App />);
 
     expect(screen.getByRole('img', { name: 'RAG 智能文档问答 logo' })).toBeInTheDocument();
@@ -10,6 +27,7 @@ describe('App shell', () => {
     expect(screen.queryByLabelText('通知')).not.toBeInTheDocument();
 
     const navigation = screen.getByRole('navigation', { name: '主导航' });
+    expect(within(navigation).getByText('工作台')).toBeInTheDocument();
     expect(within(navigation).getByText('文档中心')).toBeInTheDocument();
     expect(within(navigation).getByText('上传文档')).toBeInTheDocument();
     expect(within(navigation).getByText('文档问答')).toBeInTheDocument();
@@ -38,5 +56,20 @@ describe('App shell', () => {
 
     expect(screen.getByText('快捷操作')).toBeInTheDocument();
     expect(screen.getByText('最近动态')).toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(screen.getByText('后端暂不可用，当前显示演示数据。')).toBeInTheDocument();
+    });
+
+    fireEvent.click(within(navigation).getByRole('button', { name: /文档中心/ }));
+    expect(screen.getByRole('heading', { name: '文档中心' })).toBeInTheDocument();
+
+    fireEvent.click(within(navigation).getByRole('button', { name: /上传文档/ }));
+    expect(screen.getByRole('heading', { name: '上传文档' })).toBeInTheDocument();
+    expect(screen.getByLabelText('选择文件')).toBeInTheDocument();
+
+    fireEvent.click(within(navigation).getByRole('button', { name: /文档问答/ }));
+    expect(screen.getByRole('heading', { name: '文档问答' })).toBeInTheDocument();
+    expect(screen.getByLabelText('问题输入')).toBeInTheDocument();
   });
 });
