@@ -60,7 +60,7 @@ export function DocumentTable({
   }
 
   if (documents.length === 0) {
-    return <div className="table-state">暂无文档，请先上传 PDF、TXT 或 Word。</div>;
+    return <div className="table-state empty-state">暂无文档，请先上传 PDF、TXT 或 Word。</div>;
   }
 
   if (variant === 'management') {

@@ -988,9 +988,16 @@ button {
 }
 
 .document-table-panel {
+  display: grid;
   min-height: 386px;
   padding: 0;
   overflow: hidden;
+}
+
+.document-table-panel .empty-state {
+  min-height: inherit;
+  height: 100%;
+  align-self: stretch;
 }
 
 .document-table {
