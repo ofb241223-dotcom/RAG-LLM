@@ -130,8 +130,8 @@ button {
   align-items: center;
   justify-content: space-between;
   gap: 24px;
-  height: 72px;
-  padding: 0 34px;
+  height: 66px;
+  padding: 0 32px;
   background: rgba(255, 255, 255, 0.94);
   border-bottom: 1px solid #e5ebf4;
   backdrop-filter: blur(12px);
@@ -195,16 +195,24 @@ button {
 }
 
 .hero-section {
-  padding: 31px 32px 20px;
+  padding: 20px 32px 14px;
+}
+
+.hero-section > div {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: wrap;
 }
 
 .hero-section h1 {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin: 0 0 9px;
+  margin: 0;
   font-size: 29px;
   line-height: 1.2;
+  white-space: nowrap;
 }
 
 .hero-section h1 svg {
@@ -215,14 +223,15 @@ button {
   margin: 0;
   color: #65708c;
   font-size: 15px;
-  line-height: 1.7;
+  line-height: 1.55;
+  flex: 1 1 520px;
 }
 
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 18px;
-  padding: 0 32px 18px;
+  padding: 0 32px 16px;
 }
 
 .panel,
@@ -237,13 +246,13 @@ button {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: 138px;
-  padding: 25px 28px 22px;
+  min-height: 130px;
+  padding: 22px 28px 20px;
 }
 
 .stat-copy {
   display: grid;
-  gap: 8px;
+  gap: 7px;
   min-width: 0;
 }
 
@@ -316,12 +325,12 @@ button {
 .content-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 416px;
-  gap: 18px;
-  padding: 0 32px 32px;
+  gap: 16px;
+  padding: 0 32px 20px;
 }
 
 .panel {
-  padding: 21px 22px;
+  padding: 18px 20px;
 }
 
 .panel-heading {
@@ -329,7 +338,7 @@ button {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  margin-bottom: 16px;
+  margin-bottom: 14px;
 }
 
 .panel h2 {
@@ -350,7 +359,7 @@ button {
 }
 
 .documents-panel {
-  min-height: 283px;
+  min-height: 292px;
 }
 
 .document-row {
@@ -358,7 +367,7 @@ button {
   grid-template-columns: minmax(280px, 1.5fr) 80px 110px 154px 102px 72px;
   gap: 14px;
   align-items: center;
-  min-height: 49px;
+  min-height: 45px;
   padding: 0 15px;
   color: #2c3653;
   border-top: 1px solid #edf1f7;
@@ -366,7 +375,7 @@ button {
 }
 
 .document-row.header {
-  min-height: 43px;
+  min-height: 40px;
   color: #727d95;
   background: #f7f9fd;
   border-top: 0;
@@ -428,8 +437,8 @@ button {
 .actions-panel {
   display: grid;
   align-content: start;
-  gap: 14px;
-  min-height: 283px;
+  gap: 12px;
+  min-height: 292px;
 }
 
 .actions-panel h2 {
@@ -441,7 +450,7 @@ button {
   grid-template-columns: 42px 1fr 18px;
   align-items: center;
   gap: 13px;
-  min-height: 64px;
+  min-height: 60px;
   padding: 0 17px;
   color: #ffffff;
   background: linear-gradient(135deg, #2568ff, #5290ff);
@@ -481,19 +490,19 @@ button {
 }
 
 .process-panel {
-  min-height: 245px;
+  min-height: 310px;
   background: linear-gradient(180deg, #f8fbff, #ffffff);
 }
 
 .process-panel h2 {
   color: #1f5fcf;
-  margin-bottom: 26px;
+  margin-bottom: 18px;
 }
 
 .process-list {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 18px;
+  gap: 14px;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -503,13 +512,13 @@ button {
   position: relative;
   display: grid;
   justify-items: center;
-  gap: 8px;
+  gap: 6px;
   text-align: center;
 }
 
 .process-step:not(:last-child)::after {
   position: absolute;
-  top: 41px;
+  top: 49px;
   right: -21px;
   color: #2873ff;
   content: "... →";
@@ -521,8 +530,8 @@ button {
 .process-icon {
   display: grid;
   place-items: center;
-  width: 76px;
-  height: 76px;
+  width: 94px;
+  height: 94px;
   border-radius: 999px;
   box-shadow: 0 10px 22px rgba(50, 103, 185, 0.12);
 }
@@ -574,7 +583,7 @@ button {
 }
 
 .activity-panel {
-  min-height: 245px;
+  min-height: 310px;
 }
 
 .activity-panel ol {
@@ -590,7 +599,7 @@ button {
   display: grid;
   grid-template-columns: 24px 1fr;
   gap: 12px;
-  min-height: 49px;
+  min-height: 48px;
   color: #2b3654;
 }
 

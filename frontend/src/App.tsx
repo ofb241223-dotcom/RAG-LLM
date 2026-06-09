@@ -10,7 +10,6 @@ import {
   Home,
   MessageCircle,
   MoreVertical,
-  PieChart,
   Search,
   SearchCheck,
   Settings,
@@ -57,12 +56,12 @@ const stats = [
     tone: 'purple',
   },
   {
-    label: '存储使用量',
-    value: '2.48',
-    unit: 'GB',
-    metaLabel: '总量 10 GB',
+    label: '向量总数',
+    value: '1,245',
+    unit: '个',
+    metaLabel: '当前索引',
     trend: '',
-    icon: PieChart,
+    icon: Database,
     tone: 'orange',
   },
 ];
@@ -250,8 +249,8 @@ function App() {
             <ol className="process-list">
               {processSteps.map(({ icon: Icon, ...step }, index) => (
                 <li className={`process-step ${step.tone}`} key={step.label}>
-                  <div className="process-icon">
-                    <Icon size={31} />
+                  <div className="process-icon" data-testid="process-icon">
+                    <Icon size={42} />
                   </div>
                   <span className="step-number">{index + 1}</span>
                   <strong>{step.label}</strong>

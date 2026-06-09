@@ -15,6 +15,10 @@ describe('App shell', () => {
     expect(within(navigation).getByText('文档问答')).toBeInTheDocument();
 
     expect(screen.getAllByTestId('stat-icon')).toHaveLength(4);
+    expect(screen.getByText('向量总数')).toBeInTheDocument();
+    expect(screen.getByText('1,245')).toBeInTheDocument();
+    expect(screen.getByText('当前索引')).toBeInTheDocument();
+    expect(screen.queryByText('存储使用量')).not.toBeInTheDocument();
     expect(screen.getByText('↑ 12.5%')).toHaveClass('trend-value');
     expect(screen.getByText('↑ 18.3%')).toHaveClass('trend-value');
     expect(screen.getByText('PDF / TXT / Word')).toBeInTheDocument();
@@ -30,6 +34,7 @@ describe('App shell', () => {
     expect(within(processFlow).getByText('文本分块')).toBeInTheDocument();
     expect(within(processFlow).getByText('向量化')).toBeInTheDocument();
     expect(within(processFlow).getByText('检索问答')).toBeInTheDocument();
+    expect(within(processFlow).getAllByTestId('process-icon')).toHaveLength(5);
 
     expect(screen.getByText('快捷操作')).toBeInTheDocument();
     expect(screen.getByText('最近动态')).toBeInTheDocument();
