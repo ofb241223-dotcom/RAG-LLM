@@ -1,5 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { MessageSquareMore } from 'lucide-react';
 import App from './App';
+import { demoStats } from './data/demo';
 
 describe('App shell', () => {
   beforeEach(() => {
@@ -71,5 +73,9 @@ describe('App shell', () => {
     fireEvent.click(within(navigation).getByRole('button', { name: /文档问答/ }));
     expect(screen.getByRole('heading', { name: '文档问答' })).toBeInTheDocument();
     expect(screen.getByLabelText('问题输入')).toBeInTheDocument();
+  });
+
+  it('uses a chat-with-dots icon for the conversation total dashboard stat', () => {
+    expect(demoStats.find((stat) => stat.label === '对话总数')?.icon).toBe(MessageSquareMore);
   });
 });

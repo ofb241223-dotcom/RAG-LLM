@@ -1,5 +1,5 @@
 import { ApiError, apiRequest, buildApiUrl } from './client';
-import type { DocumentDto, DocumentListParams, DocumentListResponse } from '../types/document';
+import type { DocumentBatchResult, DocumentDto, DocumentListParams, DocumentListResponse, DocumentStats } from '../types/document';
 
 export interface UploadOptions {
   onUploadProgress?: (percent: number) => void;
@@ -7,9 +7,12 @@ export interface UploadOptions {
 
 export interface DocumentsApi {
   list(params?: DocumentListParams): Promise<DocumentListResponse>;
+  stats(): Promise<DocumentStats>;
   upload(file: File, options?: UploadOptions): Promise<DocumentDto>;
   get(documentId: number): Promise<DocumentDto>;
   reprocess(documentId: number): Promise<DocumentDto>;
+  delete(documentId: number): Promise<void>;
+  batchDelete(ids: number[]): Promise<DocumentBatchResult>;
 }
 
 function buildQuery(params: DocumentListParams = {}): string {
@@ -17,8 +20,12 @@ function buildQuery(params: DocumentListParams = {}): string {
 
   if (params.page !== undefined) query.set('page', String(params.page));
   if (params.size !== undefined) query.set('size', String(params.size));
+  if (params.format) query.set('format', params.format);
   if (params.status) query.set('status', params.status);
+  if (params.source) query.set('source', params.source);
   if (params.keyword) query.set('keyword', params.keyword);
+  if (params.startDate) query.set('startDate', params.startDate);
+  if (params.endDate) query.set('endDate', params.endDate);
 
   const value = query.toString();
   return value ? `?${value}` : '';
@@ -50,6 +57,10 @@ export const documentsApi: DocumentsApi = {
   async list(params) {
     const payload = await apiRequest<DocumentListResponse | DocumentDto[]>(`/documents${buildQuery(params)}`);
     return normalizeList(payload);
+  },
+
+  stats() {
+    return apiRequest<DocumentStats>('/documents/stats');
   },
 
   upload(file, options) {
@@ -94,6 +105,20 @@ export const documentsApi: DocumentsApi = {
   reprocess(documentId) {
     return apiRequest<DocumentDto>(`/documents/${documentId}/ingest`, {
       method: 'POST',
+    });
+  },
+
+  delete(documentId) {
+    return apiRequest<void>(`/documents/${documentId}`, {
+      method: 'DELETE',
+    });
+  },
+
+  batchDelete(ids) {
+    return apiRequest<DocumentBatchResult>('/documents/batch-delete', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ ids }),
     });
   },
 };

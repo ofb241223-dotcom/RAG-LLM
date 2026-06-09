@@ -1,4 +1,4 @@
-import { RotateCcw } from 'lucide-react';
+import { MoreHorizontal, RefreshCw, RotateCcw, Trash2 } from 'lucide-react';
 import type { DocumentDto } from '../../types/document';
 import { formatBytes, formatDateTime } from '../../utils/format';
 import { getStatusClass, getStatusLabel } from './status';
@@ -8,6 +8,12 @@ interface DocumentTableProps {
   loading?: boolean;
   error?: string;
   onRefresh?: () => void;
+  variant?: 'compact' | 'management';
+  selectedIds?: Set<number>;
+  onToggleAll?: () => void;
+  onToggleDocument?: (documentId: number) => void;
+  onDelete?: (document: DocumentDto) => void;
+  onReprocess?: (document: DocumentDto) => void;
 }
 
 function getFileTone(format: DocumentDto['format']): string {
@@ -16,7 +22,25 @@ function getFileTone(format: DocumentDto['format']): string {
   return 'word';
 }
 
-export function DocumentTable({ documents, loading = false, error, onRefresh }: DocumentTableProps) {
+function getSourceLabel(source: DocumentDto['source']): string {
+  if (source === 'MANUAL_UPLOAD') return '手动上传';
+  if (source === 'LOCAL_IMPORT') return '本地导入';
+  if (source === 'API_IMPORT') return 'API导入';
+  return '-';
+}
+
+export function DocumentTable({
+  documents,
+  loading = false,
+  error,
+  onRefresh,
+  variant = 'compact',
+  selectedIds,
+  onToggleAll,
+  onToggleDocument,
+  onDelete,
+  onReprocess,
+}: DocumentTableProps) {
   if (loading) {
     return <div className="table-state">正在加载文档...</div>;
   }
@@ -37,6 +61,76 @@ export function DocumentTable({ documents, loading = false, error, onRefresh }: 
 
   if (documents.length === 0) {
     return <div className="table-state">暂无文档，请先上传 PDF、TXT 或 Word。</div>;
+  }
+
+  if (variant === 'management') {
+    const allSelected = documents.length > 0 && documents.every((document) => selectedIds?.has(document.id));
+
+    return (
+      <div className="document-table management">
+        <div className="document-row management header">
+          <span>
+            <input
+              aria-label="选择当前页文档"
+              checked={allSelected}
+              disabled={documents.length === 0}
+              onChange={onToggleAll}
+              type="checkbox"
+            />
+          </span>
+          <span>文件名称</span>
+          <span>类型</span>
+          <span>来源</span>
+          <span>大小</span>
+          <span>上传时间</span>
+          <span>状态</span>
+          <span>分块</span>
+          <span>向量</span>
+          <span>操作</span>
+        </div>
+        {documents.map((document) => {
+          const selected = Boolean(selectedIds?.has(document.id));
+
+          return (
+            <div className="document-row management" data-testid={`document-row-${document.id}`} key={document.id}>
+              <span>
+                <input
+                  aria-label={`选择 ${document.originalFilename}`}
+                  checked={selected}
+                  onChange={() => onToggleDocument?.(document.id)}
+                  type="checkbox"
+                />
+              </span>
+              <span className="file-cell" title={document.originalFilename}>
+                <i className={`file-badge ${getFileTone(document.format)}`}>{document.format}</i>
+                {document.originalFilename}
+              </span>
+              <span>{document.format}</span>
+              <span>{getSourceLabel(document.source)}</span>
+              <span>{formatBytes(document.sizeBytes)}</span>
+              <span>{formatDateTime(document.uploadedAt)}</span>
+              <span>
+                <mark className={`status-badge ${getStatusClass(document.status)}`}>{getStatusLabel(document.status)}</mark>
+                {document.errorMessage ? <small className="row-error">{document.errorMessage}</small> : null}
+              </span>
+              <span>{document.chunkCount ?? '-'}</span>
+              <span>{document.vectorCount ?? '-'}</span>
+              <span className="row-actions">
+                <button aria-label={`重新处理 ${document.originalFilename}`} className="icon-button" onClick={() => onReprocess?.(document)} type="button">
+                  <RefreshCw size={15} />
+                </button>
+                <button aria-label={`删除 ${document.originalFilename}`} className="icon-button danger" onClick={() => onDelete?.(document)} type="button">
+                  <Trash2 size={15} />
+                </button>
+                <button aria-label={`更多 ${document.originalFilename}`} className="icon-button" type="button">
+                  <MoreHorizontal size={15} />
+                </button>
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    );
   }
 
   return (

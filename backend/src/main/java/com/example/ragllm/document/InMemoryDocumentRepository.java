@@ -28,4 +28,9 @@ public class InMemoryDocumentRepository implements DocumentRepository {
     public List<DocumentRecord> findAll() {
         return new ArrayList<>(documents.values());
     }
+
+    @Override
+    public Optional<DocumentRecord> deleteById(Long id) {
+        return Optional.ofNullable(documents.remove(id));
+    }
 }

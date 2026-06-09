@@ -1,4 +1,4 @@
-import { Box, CheckCircle2, CloudUpload, Database, FileText, SearchCheck, type LucideIcon } from 'lucide-react';
+import { Box, CheckCircle2, CloudUpload, Database, FileText, MessageSquareMore, SearchCheck, type LucideIcon } from 'lucide-react';
 import type { DocumentDto } from '../types/document';
 
 export interface DashboardStat {
@@ -79,7 +79,7 @@ export const demoStats: DashboardStat[] = [
     unit: '次',
     metaLabel: '较上周',
     trend: '↑ 18.3%',
-    icon: Database,
+    icon: MessageSquareMore,
     tone: 'purple',
   },
   {

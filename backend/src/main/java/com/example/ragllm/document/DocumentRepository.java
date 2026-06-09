@@ -9,4 +9,6 @@ public interface DocumentRepository {
     Optional<DocumentRecord> findById(Long id);
 
     List<DocumentRecord> findAll();
+
+    Optional<DocumentRecord> deleteById(Long id);
 }

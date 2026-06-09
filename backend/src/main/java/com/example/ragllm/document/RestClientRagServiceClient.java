@@ -7,6 +7,7 @@ import org.springframework.core.io.FileSystemResource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.MediaType;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.util.StringUtils;
@@ -84,6 +85,31 @@ public class RestClientRagServiceClient implements RagServiceClient {
         } catch (RestClientException exception) {
             throw new RagServiceException("RAG service request failed", exception);
         }
+    }
+
+    @Override
+    public void deleteDocument(String documentId) {
+        if (!StringUtils.hasText(documentId)) {
+            throw new RagServiceException("Document id is missing");
+        }
+
+        try {
+            restClient.delete()
+                    .uri("/documents/{documentId}", documentId)
+                    .retrieve()
+                    .toBodilessEntity();
+        } catch (RestClientResponseException exception) {
+            if (isNotFound(exception.getStatusCode())) {
+                return;
+            }
+            throw new RagServiceException(extractErrorMessage(exception), exception);
+        } catch (RestClientException exception) {
+            throw new RagServiceException("RAG service request failed", exception);
+        }
+    }
+
+    private boolean isNotFound(HttpStatusCode statusCode) {
+        return statusCode != null && statusCode.value() == 404;
     }
 
     private String extractErrorMessage(RestClientResponseException exception) {

@@ -25,4 +25,16 @@ public class FileDocumentStorage {
         file.transferTo(target);
         return target;
     }
+
+    public void delete(String storagePath) throws IOException {
+        if (!StringUtils.hasText(storagePath)) {
+            return;
+        }
+
+        Path target = Path.of(storagePath).toAbsolutePath().normalize();
+        if (!target.startsWith(uploadDir)) {
+            throw new IOException("Invalid upload path");
+        }
+        Files.deleteIfExists(target);
+    }
 }

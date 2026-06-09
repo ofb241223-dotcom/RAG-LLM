@@ -30,6 +30,11 @@ class DocumentServiceTest {
             public QaAnswer ask(QaAskRequest request) {
                 throw new UnsupportedOperationException("unused");
             }
+
+            @Override
+            public void deleteDocument(String documentId) {
+                throw new UnsupportedOperationException("unused");
+            }
         };
         DocumentService service = new DocumentService(
                 repository,

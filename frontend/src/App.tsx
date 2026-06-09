@@ -16,7 +16,7 @@ const navItems = [
 ] satisfies Array<{ id: ViewId; label: string; icon: typeof Home }>;
 
 function renderView(activeView: ViewId, setActiveView: (view: ViewId) => void) {
-  if (activeView === 'documents') return <DocumentsPage />;
+  if (activeView === 'documents') return <DocumentsPage onNavigate={setActiveView} />;
   if (activeView === 'upload') return <UploadPage />;
   if (activeView === 'chat') return <ChatPage />;
   return <DashboardPage onNavigate={setActiveView} />;
