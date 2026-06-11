@@ -82,5 +82,6 @@ describe('DocumentTable', () => {
 
     expect(onOpenDetail).toHaveBeenCalledWith(documents[0]);
     expect(onToggleDocument).not.toHaveBeenCalled();
+    expect(within(readyRow).queryByRole('button', { name: '更多 ready.pdf' })).not.toBeInTheDocument();
   });
 });

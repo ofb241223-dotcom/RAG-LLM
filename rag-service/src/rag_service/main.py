@@ -120,6 +120,12 @@ def create_app(
                 chunk_size=runtime_config.chunk_size,
                 chunk_overlap=runtime_config.chunk_overlap,
                 score_threshold=runtime_config.score_threshold,
+                chunking_strategy=runtime_config.chunking_strategy,
+                retrieval_mode=runtime_config.retrieval_mode,
+                vector_weight=runtime_config.vector_weight,
+                keyword_weight=runtime_config.keyword_weight,
+                mmr_enabled=runtime_config.mmr_enabled,
+                mmr_lambda=runtime_config.mmr_lambda,
             )
         if not hasattr(app.state, "rag_service"):
             app.state.rag_service = RagService(

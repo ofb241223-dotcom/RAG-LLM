@@ -21,7 +21,7 @@ interface DashboardActivity {
   tone: 'blue' | 'green' | 'purple' | 'orange' | 'red';
 }
 
-const RECENT_ACTIVITY_LIMIT = 4;
+const RECENT_ACTIVITY_LIMIT = 5;
 
 function buildStats(documents: DocumentDto[], total: number, conversationTotal: number): DashboardStat[] {
   const readyCount = documents.filter((document) => document.status === 'READY').length;
@@ -235,7 +235,7 @@ export function DashboardPage({ documentsApi = defaultDocumentsApi, chatApi = de
               <ChevronRight size={16} />
             </button>
           </div>
-          <DocumentTable documents={documents.slice(0, 3)} />
+          <DocumentTable documents={documents.slice(0, 4)} />
         </article>
 
         <article className="panel actions-panel">

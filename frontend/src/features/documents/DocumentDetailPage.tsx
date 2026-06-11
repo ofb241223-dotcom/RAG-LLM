@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import rehypeKatex from 'rehype-katex';
+import rehypeRaw from 'rehype-raw';
 import {
   ArrowLeft,
   Box,
@@ -231,10 +232,19 @@ function buildKeywords(document: DocumentDto, chunks: PreviewChunk[]): string[] 
   return Array.from(new Set(words)).slice(0, 5);
 }
 
+function averageChunkLength(chunks: PreviewChunk[]): number {
+  if (chunks.length === 0) return 0;
+  return Math.round(chunks.reduce((total, chunk) => total + chunk.characters, 0) / chunks.length);
+}
+
+function maxChunkLength(chunks: PreviewChunk[]): number {
+  return chunks.reduce((max, chunk) => Math.max(max, chunk.characters), 0);
+}
+
 function ChunkMarkdown({ text }: { text: string }) {
   return (
     <div className="chunk-markdown markdown-body">
-      <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
+      <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeRaw, rehypeKatex]}>
         {text}
       </ReactMarkdown>
     </div>
@@ -355,9 +365,8 @@ export function DocumentDetailPage({
       chunks,
       steps: processingSteps.length > 0 ? mapProcessingSteps(processingSteps) : buildFallbackSteps(document),
       vectorDimension,
-      tableCount: 0,
-      imageCount: 0,
-      formulaCount: 0,
+      averageChunkCharacters: averageChunkLength(chunks),
+      maxChunkCharacters: maxChunkLength(chunks),
       isIndexed,
       keywords: buildKeywords(document, chunks),
     };
@@ -415,13 +424,13 @@ export function DocumentDetailPage({
     settings?.embedding.model,
   );
   const averageVectorSize = detail.vectorDimension ? `${(detail.vectorDimension * 4 / 1024).toFixed(1)} KB` : '-';
-  const previewChunks = detail.chunks.slice(0, 4);
+  const previewChunks = detail.chunks.slice(0, 6);
   const extractStats: ExtractStat[] = [
     { label: '提取字符数', value: detail.characters.toLocaleString('zh-CN'), unit: '字符', icon: FileText },
-    { label: '提取段落数', value: detail.chunkCount.toLocaleString('zh-CN'), unit: '段落', icon: Layers },
-    { label: '提取表格数', value: String(detail.tableCount), unit: '表格', icon: Database },
-    { label: '提取图片数', value: String(detail.imageCount), unit: '图片', icon: Eye },
-    { label: '提取公式数', value: String(detail.formulaCount), unit: '公式', icon: Sigma },
+    { label: '文本块数', value: detail.chunkCount.toLocaleString('zh-CN'), unit: '块', icon: Layers },
+    { label: '向量数', value: detail.vectorCount.toLocaleString('zh-CN'), unit: '个', icon: Database },
+    { label: '平均块长', value: detail.averageChunkCharacters.toLocaleString('zh-CN'), unit: '字符', icon: Eye },
+    { label: '最大块长', value: detail.maxChunkCharacters.toLocaleString('zh-CN'), unit: '字符', icon: Sigma },
   ];
 
   return (
@@ -515,7 +524,7 @@ export function DocumentDetailPage({
                 <span>文本内容预览</span>
                 <span>字符数</span>
                 <span>Token 数</span>
-                <span>重叠字符</span>
+                <span>上下文重叠</span>
               </div>
               {detail.chunks.length > 0 ? (
                 previewChunks.map((chunk) => (
@@ -535,7 +544,7 @@ export function DocumentDetailPage({
               )}
             </div>
             <button className="detail-view-all-button" disabled={detail.chunks.length === 0} type="button" onClick={() => setShowAllChunks(true)}>
-              查看全部 {detail.chunks.length.toLocaleString('zh-CN')} 个文本块
+              查看全部 {detail.chunks.length.toLocaleString('zh-CN')} 个文本块，包含完整内容
             </button>
           </article>
         </div>

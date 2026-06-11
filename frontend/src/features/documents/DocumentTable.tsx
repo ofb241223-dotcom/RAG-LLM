@@ -1,4 +1,4 @@
-import { Eye, MoreHorizontal, RefreshCw, RotateCcw, Trash2 } from 'lucide-react';
+import { Eye, RefreshCw, RotateCcw, Trash2 } from 'lucide-react';
 import type { DocumentDto } from '../../types/document';
 import { formatBytes, formatDateTime } from '../../utils/format';
 import { getStatusClass, getStatusLabel } from './status';
@@ -126,9 +126,6 @@ export function DocumentTable({
                 </button>
                 <button aria-label={`删除 ${document.originalFilename}`} className="icon-button danger" onClick={() => onDelete?.(document)} type="button">
                   <Trash2 size={15} />
-                </button>
-                <button aria-label={`更多 ${document.originalFilename}`} className="icon-button" type="button" onClick={() => onOpenDetail?.(document)}>
-                  <MoreHorizontal size={15} />
                 </button>
               </span>
             </div>

@@ -30,6 +30,30 @@ const documents: DocumentDto[] = [
     chunkCount: 2,
     vectorCount: 2,
   },
+  {
+    id: 3,
+    originalFilename: '第三份.xlsx',
+    format: 'XLSX',
+    source: 'MANUAL_UPLOAD',
+    status: 'READY',
+    sizeBytes: 4096,
+    uploadedAt: '2026-06-11T02:00:00+08:00',
+    updatedAt: '2026-06-11T02:04:00+08:00',
+    chunkCount: 4,
+    vectorCount: 4,
+  },
+  {
+    id: 4,
+    originalFilename: '第四份.txt',
+    format: 'TXT',
+    source: 'MANUAL_UPLOAD',
+    status: 'READY',
+    sizeBytes: 512,
+    uploadedAt: '2026-06-11T01:00:00+08:00',
+    updatedAt: '2026-06-11T01:04:00+08:00',
+    chunkCount: 1,
+    vectorCount: 1,
+  },
 ];
 
 function createDocumentsApi(activity = false): Pick<DocumentsApi, 'list' | 'activities'> {
@@ -95,14 +119,20 @@ function createChatApi(): Pick<ChatApi, 'listSessions' | 'listDocuments'> {
 }
 
 describe('DashboardPage', () => {
-  it('renders the newest four real activity events instead of hard-coded demo activities', async () => {
+  it('renders the newest five real activity events and four recent uploads', async () => {
     render(<DashboardPage documentsApi={createDocumentsApi()} chatApi={createChatApi()} onNavigate={vi.fn()} />);
+
+    const documentsPanel = await screen.findByRole('heading', { name: '最近上传的文档' }).then((heading) => heading.closest('article'));
+    expect(documentsPanel).not.toBeNull();
+    await waitFor(() => {
+      expect(within(documentsPanel as HTMLElement).getAllByTestId(/document-row-/u)).toHaveLength(4);
+    });
 
     const panel = await screen.findByRole('heading', { name: '最近动态' }).then((heading) => heading.closest('article'));
     expect(panel).not.toBeNull();
 
     await waitFor(() => {
-      expect(within(panel as HTMLElement).getAllByRole('listitem')).toHaveLength(4);
+      expect(within(panel as HTMLElement).getAllByRole('listitem')).toHaveLength(5);
     });
 
     expect(within(panel as HTMLElement).getByText('文档《最新上传.pdf》解析完成')).toBeInTheDocument();
@@ -123,14 +153,14 @@ describe('DashboardPage', () => {
     expect(panel).not.toBeNull();
 
     await waitFor(() => {
-      expect(within(panel as HTMLElement).getAllByRole('listitem')).toHaveLength(4);
+      expect(within(panel as HTMLElement).getAllByRole('listitem')).toHaveLength(5);
     });
 
     fireEvent.click(within(panel as HTMLElement).getByRole('button', { name: '查看全部' }));
 
     const dialog = await screen.findByRole('dialog', { name: '全部动态' });
     expect(onNavigate).not.toHaveBeenCalled();
-    expect(within(dialog).getAllByRole('listitem')).toHaveLength(8);
+    expect(within(dialog).getAllByRole('listitem')).toHaveLength(14);
     expect(within(dialog).getByText('删除了文档《旧文档.txt》')).toBeInTheDocument();
     expect(within(dialog).getByText('上传了文档《问答文档.docx》')).toBeInTheDocument();
 
@@ -158,7 +188,7 @@ describe('DashboardPage', () => {
     expect(panel).not.toBeNull();
 
     await waitFor(() => {
-      expect(within(panel as HTMLElement).getAllByRole('listitem')).toHaveLength(4);
+      expect(within(panel as HTMLElement).getAllByRole('listitem')).toHaveLength(5);
     });
 
     fireEvent.click(within(panel as HTMLElement).getByRole('button', { name: '查看全部' }));

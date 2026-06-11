@@ -41,4 +41,20 @@ describe('AnswerContent', () => {
     fireEvent.click(screen.getByRole('button', { name: '引用 1' }));
     expect(onSelectCitation).toHaveBeenCalledWith(citation);
   });
+
+  it('renders table cell line breaks instead of showing raw br tags', () => {
+    render(
+      <AnswerContent
+        content={'| 项目 | 内容 |\n| --- | --- |\n| 学术竞赛 | 1. 国家级三等奖<br>2. 省级二等奖 |'}
+        citations={[]}
+        messageId={103}
+        onSelectCitation={() => undefined}
+      />,
+    );
+
+    const answer = screen.getByTestId('assistant-answer-103');
+    expect(answer.textContent).not.toContain('<br>');
+    expect(answer.querySelector('table')).not.toBeNull();
+    expect(answer.querySelector('td br')).not.toBeNull();
+  });
 });

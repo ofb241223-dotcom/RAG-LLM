@@ -20,6 +20,12 @@ class RuntimeModelConfig(BaseModel):
     score_threshold: float = Field(default=0.3, ge=0.0, le=1.0)
     chunk_size: int = Field(default=500, ge=100, le=4000)
     chunk_overlap: int = Field(default=80, ge=0, le=2000)
+    chunking_strategy: str = "structured"
+    retrieval_mode: str = "hybrid"
+    vector_weight: float = Field(default=0.65, ge=0.0, le=1.0)
+    keyword_weight: float = Field(default=0.35, ge=0.0, le=1.0)
+    mmr_enabled: bool = True
+    mmr_lambda: float = Field(default=0.65, ge=0.0, le=1.0)
     context_length: int = Field(default=128000, ge=1024)
     stream_output: bool = True
     embedding_batch_size: int = Field(default=10, ge=1, le=100)

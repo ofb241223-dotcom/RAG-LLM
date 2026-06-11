@@ -29,6 +29,21 @@ class FakeLlmProvider:
         return f"问题：{question}\n依据：{joined}"
 
 
+class DirectionalEmbeddingProvider:
+    model = "directional-embedding"
+
+    def embed_texts(self, texts: list[str], *, task_type: str | None = None) -> list[list[float]]:
+        vectors = []
+        for text in texts:
+            if "课程介绍" in text or "有哪些人" in text:
+                vectors.append([1.0, 0.0])
+            elif "推免资格名单" in text:
+                vectors.append([0.0, 1.0])
+            else:
+                vectors.append([0.2, 0.2])
+        return vectors
+
+
 @pytest.mark.anyio
 async def test_status_reports_runtime_configuration(tmp_path) -> None:
     app = create_app(
@@ -149,6 +164,35 @@ async def test_qa_accepts_numeric_document_ids_from_backend(tmp_path) -> None:
 
     assert response.status_code == 200
     assert response.json()["citations"][0]["document_id"] == "1"
+
+
+@pytest.mark.anyio
+async def test_qa_hybrid_retrieval_can_rescue_keyword_match_from_vector_miss(tmp_path) -> None:
+    app = create_app(
+        chroma_persist_dir=tmp_path,
+        embedding_provider=DirectionalEmbeddingProvider(),
+        llm_provider=FakeLlmProvider(),
+    )
+    transport = httpx.ASGITransport(app=app)
+    text = "课程介绍和培养方案。" * 80 + "\n\n推免资格名单：张三、李四、王五。"
+
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        await client.post(
+            "/documents/ingest",
+            data={"document_id": "hybrid-doc"},
+            files={"file": ("名单.txt", text, "text/plain")},
+        )
+        response = await client.post(
+            "/qa",
+            json={
+                "question": "有哪些人获得推免资格",
+                "document_ids": ["hybrid-doc"],
+                "top_k": 1,
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.json()["citations"][0]["text"] == "推免资格名单：张三、李四、王五。"
 
 
 @pytest.mark.anyio

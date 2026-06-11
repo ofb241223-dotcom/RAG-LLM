@@ -1,5 +1,6 @@
 import ReactMarkdown from 'react-markdown';
 import rehypeKatex from 'rehype-katex';
+import rehypeRaw from 'rehype-raw';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import type { ChatCitationDto } from '../../../api/chat';
@@ -22,7 +23,7 @@ export function AnswerContent({ content, citations, messageId, onSelectCitation 
         const match = part.match(/^\[(\d+)\]$/);
         if (!match) {
           return (
-            <ReactMarkdown key={`${messageId}-md-${index}`} remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
+            <ReactMarkdown key={`${messageId}-md-${index}`} remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeRaw, rehypeKatex]}>
               {part}
             </ReactMarkdown>
           );
