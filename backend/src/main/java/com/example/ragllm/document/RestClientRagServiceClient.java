@@ -2,10 +2,16 @@ package com.example.ragllm.document;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.example.ragllm.settings.RuntimeModelConfig;
+import com.example.ragllm.settings.SettingsTestResponse;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import java.util.List;
 import java.nio.file.Path;
+import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.util.LinkedMultiValueMap;
@@ -17,6 +23,9 @@ import org.springframework.web.client.RestClientResponseException;
 
 public class RestClientRagServiceClient implements RagServiceClient {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private static final ParameterizedTypeReference<List<DocumentChunkDto>> DOCUMENT_CHUNK_LIST =
+            new ParameterizedTypeReference<>() {
+            };
 
     private final RestClient restClient;
 
@@ -25,9 +34,9 @@ public class RestClientRagServiceClient implements RagServiceClient {
     }
 
     @Override
-    public RagIngestResponse ingest(RagIngestRequest request) {
+    public RagIngestResponse ingest(RagIngestRequest request, RuntimeModelConfig runtimeConfig) {
         try {
-            MultiValueMap<String, Object> body = buildIngestBody(request);
+            MultiValueMap<String, Object> body = buildIngestBody(request, runtimeConfig);
             RagIngestResponse response = restClient.post()
                     .uri("/documents/ingest")
                     .contentType(MediaType.MULTIPART_FORM_DATA)
@@ -45,7 +54,7 @@ public class RestClientRagServiceClient implements RagServiceClient {
         }
     }
 
-    private MultiValueMap<String, Object> buildIngestBody(RagIngestRequest request) {
+    private MultiValueMap<String, Object> buildIngestBody(RagIngestRequest request, RuntimeModelConfig runtimeConfig) {
         if (!StringUtils.hasText(request.storagePath())) {
             throw new RagServiceException("Document storage path is missing");
         }
@@ -55,6 +64,7 @@ public class RestClientRagServiceClient implements RagServiceClient {
                 : "document";
         MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
         body.add("document_id", String.valueOf(request.documentId()));
+        body.add("runtime_config", serializeRuntimeConfig(runtimeConfig));
 
         HttpHeaders fileHeaders = new HttpHeaders();
         fileHeaders.setContentType(MediaType.APPLICATION_OCTET_STREAM);
@@ -69,11 +79,11 @@ public class RestClientRagServiceClient implements RagServiceClient {
     }
 
     @Override
-    public QaAnswer ask(QaAskRequest request) {
+    public QaAnswer ask(QaAskRequest request, RuntimeModelConfig runtimeConfig) {
         try {
             QaAnswer response = restClient.post()
                     .uri("/qa")
-                    .body(request)
+                    .body(RagQaRequest.from(request, runtimeConfig))
                     .retrieve()
                     .body(QaAnswer.class);
             if (response == null) {
@@ -88,14 +98,34 @@ public class RestClientRagServiceClient implements RagServiceClient {
     }
 
     @Override
-    public void deleteDocument(String documentId) {
+    public SettingsTestResponse testProvider(String kind, RuntimeModelConfig runtimeConfig) {
+        try {
+            SettingsTestResponse response = restClient.post()
+                    .uri("/providers/test")
+                    .body(new ProviderTestRequest(kind, runtimeConfig))
+                    .retrieve()
+                    .body(SettingsTestResponse.class);
+            if (response == null) {
+                throw new RagServiceException("RAG service returned an empty provider test response");
+            }
+            return response;
+        } catch (RestClientResponseException exception) {
+            throw new RagServiceException(extractErrorMessage(exception), exception);
+        } catch (RestClientException exception) {
+            throw new RagServiceException("RAG service request failed", exception);
+        }
+    }
+
+    @Override
+    public void deleteDocument(String documentId, RuntimeModelConfig runtimeConfig) {
         if (!StringUtils.hasText(documentId)) {
             throw new RagServiceException("Document id is missing");
         }
 
         try {
-            restClient.delete()
+            restClient.method(HttpMethod.DELETE)
                     .uri("/documents/{documentId}", documentId)
+                    .body(new RagDeleteRequest(runtimeConfig))
                     .retrieve()
                     .toBodilessEntity();
         } catch (RestClientResponseException exception) {
@@ -108,8 +138,36 @@ public class RestClientRagServiceClient implements RagServiceClient {
         }
     }
 
+    @Override
+    public List<DocumentChunkDto> listChunks(String documentId, RuntimeModelConfig runtimeConfig) {
+        if (!StringUtils.hasText(documentId)) {
+            throw new RagServiceException("Document id is missing");
+        }
+
+        try {
+            List<DocumentChunkDto> response = restClient.post()
+                    .uri("/documents/{documentId}/chunks", documentId)
+                    .body(new RagRuntimeConfigRequest(runtimeConfig))
+                    .retrieve()
+                    .body(DOCUMENT_CHUNK_LIST);
+            return response == null ? List.of() : response;
+        } catch (RestClientResponseException exception) {
+            throw new RagServiceException(extractErrorMessage(exception), exception);
+        } catch (RestClientException exception) {
+            throw new RagServiceException("RAG service request failed", exception);
+        }
+    }
+
     private boolean isNotFound(HttpStatusCode statusCode) {
         return statusCode != null && statusCode.value() == 404;
+    }
+
+    private String serializeRuntimeConfig(RuntimeModelConfig runtimeConfig) {
+        try {
+            return OBJECT_MAPPER.writeValueAsString(runtimeConfig);
+        } catch (Exception exception) {
+            throw new RagServiceException("Failed to serialize runtime config", exception);
+        }
     }
 
     private String extractErrorMessage(RestClientResponseException exception) {
@@ -143,5 +201,14 @@ public class RestClientRagServiceClient implements RagServiceClient {
             return null;
         }
         return value.isTextual() ? value.asText() : value.toString();
+    }
+
+    private record ProviderTestRequest(String kind, @JsonProperty("runtime_config") RuntimeModelConfig runtimeConfig) {
+    }
+
+    private record RagDeleteRequest(@JsonProperty("runtime_config") RuntimeModelConfig runtimeConfig) {
+    }
+
+    private record RagRuntimeConfigRequest(@JsonProperty("runtime_config") RuntimeModelConfig runtimeConfig) {
     }
 }

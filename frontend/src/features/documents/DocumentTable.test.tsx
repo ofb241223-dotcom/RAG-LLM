@@ -1,5 +1,5 @@
 import { render, screen, within } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { DocumentTable } from './DocumentTable';
 import type { DocumentDto } from '../../types/document';
 
@@ -61,5 +61,26 @@ describe('DocumentTable', () => {
     const failedRow = screen.getByTestId('document-row-3');
     expect(within(failedRow).getByText('失败')).toHaveClass('status-badge', 'failed');
     expect(within(failedRow).getByText('empty document')).toBeInTheDocument();
+  });
+
+  it('opens document detail from the management row without toggling selection', () => {
+    const onOpenDetail = vi.fn();
+    const onToggleDocument = vi.fn();
+
+    render(
+      <DocumentTable
+        documents={documents}
+        onOpenDetail={onOpenDetail}
+        onToggleDocument={onToggleDocument}
+        selectedIds={new Set()}
+        variant="management"
+      />,
+    );
+
+    const readyRow = screen.getByTestId('document-row-1');
+    within(readyRow).getByRole('button', { name: '查看处理详情 ready.pdf' }).click();
+
+    expect(onOpenDetail).toHaveBeenCalledWith(documents[0]);
+    expect(onToggleDocument).not.toHaveBeenCalled();
   });
 });

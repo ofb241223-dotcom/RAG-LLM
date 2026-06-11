@@ -1,4 +1,4 @@
-import { MoreHorizontal, RefreshCw, RotateCcw, Trash2 } from 'lucide-react';
+import { Eye, MoreHorizontal, RefreshCw, RotateCcw, Trash2 } from 'lucide-react';
 import type { DocumentDto } from '../../types/document';
 import { formatBytes, formatDateTime } from '../../utils/format';
 import { getStatusClass, getStatusLabel } from './status';
@@ -13,6 +13,7 @@ interface DocumentTableProps {
   onToggleAll?: () => void;
   onToggleDocument?: (documentId: number) => void;
   onDelete?: (document: DocumentDto) => void;
+  onOpenDetail?: (document: DocumentDto) => void;
   onReprocess?: (document: DocumentDto) => void;
 }
 
@@ -39,6 +40,7 @@ export function DocumentTable({
   onToggleAll,
   onToggleDocument,
   onDelete,
+  onOpenDetail,
   onReprocess,
 }: DocumentTableProps) {
   if (loading) {
@@ -116,13 +118,16 @@ export function DocumentTable({
               <span>{document.chunkCount ?? '-'}</span>
               <span>{document.vectorCount ?? '-'}</span>
               <span className="row-actions">
+                <button aria-label={`查看处理详情 ${document.originalFilename}`} className="icon-button" onClick={() => onOpenDetail?.(document)} type="button">
+                  <Eye size={15} />
+                </button>
                 <button aria-label={`重新处理 ${document.originalFilename}`} className="icon-button" onClick={() => onReprocess?.(document)} type="button">
                   <RefreshCw size={15} />
                 </button>
                 <button aria-label={`删除 ${document.originalFilename}`} className="icon-button danger" onClick={() => onDelete?.(document)} type="button">
                   <Trash2 size={15} />
                 </button>
-                <button aria-label={`更多 ${document.originalFilename}`} className="icon-button" type="button">
+                <button aria-label={`更多 ${document.originalFilename}`} className="icon-button" type="button" onClick={() => onOpenDetail?.(document)}>
                   <MoreHorizontal size={15} />
                 </button>
               </span>

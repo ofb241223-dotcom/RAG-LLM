@@ -25,6 +25,7 @@ __pycache__/
 .ruff_cache/
 
 # Runtime data
+.runtime/
 uploads/
 storage/
 chroma/
@@ -44,3 +45,7 @@ Thumbs.db
 
 # Local source/reference documents not needed in public repo
 2026综合实训一课程设计指导书.doc
+rag-*.png
+《深度学习原理与实践》第3章.pdf
+实验记录与结果分析.txt
+自然语言处理综述.docx

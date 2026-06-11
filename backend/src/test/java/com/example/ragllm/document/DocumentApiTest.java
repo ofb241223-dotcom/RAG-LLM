@@ -6,6 +6,7 @@ import static org.hamcrest.Matchers.hasSize;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -31,6 +32,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -47,6 +49,9 @@ class DocumentApiTest {
     @Autowired
     private MockMvc mockMvc;
 
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
+
     @DynamicPropertySource
     static void backendProperties(DynamicPropertyRegistry registry) {
         registry.add("rag.service.base-url", () -> ragServer.baseUrl());
@@ -61,6 +66,17 @@ class DocumentApiTest {
     @BeforeEach
     void resetRagServer() throws IOException {
         ragServer.reset();
+        jdbcTemplate.execute("SET REFERENTIAL_INTEGRITY FALSE");
+        jdbcTemplate.update("DELETE FROM chat_citations");
+        jdbcTemplate.update("DELETE FROM chat_messages");
+        jdbcTemplate.update("DELETE FROM chat_sessions");
+        jdbcTemplate.update("DELETE FROM documents");
+        jdbcTemplate.update("DELETE FROM system_settings");
+        jdbcTemplate.execute("ALTER TABLE documents ALTER COLUMN id RESTART WITH 1");
+        jdbcTemplate.execute("ALTER TABLE chat_sessions ALTER COLUMN id RESTART WITH 1");
+        jdbcTemplate.execute("ALTER TABLE chat_messages ALTER COLUMN id RESTART WITH 1");
+        jdbcTemplate.execute("ALTER TABLE chat_citations ALTER COLUMN id RESTART WITH 1");
+        jdbcTemplate.execute("SET REFERENTIAL_INTEGRITY TRUE");
         Path uploadDir = Path.of("target/test-uploads");
         if (Files.exists(uploadDir)) {
             try (var paths = Files.walk(uploadDir)) {
@@ -98,6 +114,8 @@ class DocumentApiTest {
 
         assertThat(ragServer.lastIngestContentType()).startsWith("multipart/form-data");
         assertThat(ragServer.lastIngestBody()).contains("name=\"document_id\"");
+        assertThat(ragServer.lastIngestBody()).contains("name=\"runtime_config\"");
+        assertThat(ragServer.lastIngestBody()).contains("gemini-embedding-001");
         assertThat(ragServer.lastIngestBody()).contains("name=\"file\"");
         assertThat(ragServer.lastIngestBody()).contains("filename=\"chapter.pdf\"");
     }
@@ -239,6 +257,22 @@ class DocumentApiTest {
     }
 
     @Test
+    void listsUploadedDocumentChunksFromRagService() throws Exception {
+        upload("notes.txt", "notes");
+
+        mockMvc.perform(get("/api/documents/1/chunks"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(1)))
+                .andExpect(jsonPath("$[0].document_id").value("1"))
+                .andExpect(jsonPath("$[0].chunk_id").value("1-0"))
+                .andExpect(jsonPath("$[0].source_name").value("notes.txt"))
+                .andExpect(jsonPath("$[0].text").value("真实文本块内容"));
+
+        assertThat(ragServer.lastChunksBody()).contains("runtime_config");
+        assertThat(ragServer.lastChunksBody()).contains("gemini-embedding-001");
+    }
+
+    @Test
     void reingestsExistingDocument() throws Exception {
         upload("retry.doc", "doc");
 
@@ -262,6 +296,16 @@ class DocumentApiTest {
                 .andExpect(status().isNotFound());
         assertThat(Files.exists(storedFile)).isFalse();
         assertThat(ragServer.deletedDocumentIds()).containsExactly("1");
+    }
+
+    @Test
+    void downloadsUploadedOriginalDocument() throws Exception {
+        upload("download-me.txt", "download content");
+
+        mockMvc.perform(get("/api/documents/1/download"))
+                .andExpect(status().isOk())
+                .andExpect(result -> assertThat(result.getResponse().getHeader("Content-Disposition")).contains("download-me.txt"))
+                .andExpect(result -> assertThat(result.getResponse().getContentAsString(StandardCharsets.UTF_8)).isEqualTo("download content"));
     }
 
     @Test
@@ -347,6 +391,157 @@ class DocumentApiTest {
                 .andExpect(jsonPath("$.sources[0].documentId").value(1))
                 .andExpect(jsonPath("$.sources[0].filename").value("chapter.pdf"))
                 .andExpect(jsonPath("$.sources[0].chunkId").value("1-3"));
+
+        assertThat(ragServer.lastQaBody()).contains("\"runtime_config\"");
+        assertThat(ragServer.lastQaBody()).contains("\"llm_model\"");
+        assertThat(ragServer.lastQaBody()).contains("gemini-3.1-flash-lite");
+    }
+
+    @Test
+    void persistsDocumentsInJdbcRepository() throws Exception {
+        upload("persistent.txt", "content");
+
+        mockMvc.perform(get("/api/documents/1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.originalFilename").value("persistent.txt"))
+                .andExpect(jsonPath("$.status").value("READY"));
+
+        mockMvc.perform(get("/api/documents")
+                        .param("page", "0")
+                        .param("size", "10"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.total").value(1))
+                .andExpect(jsonPath("$.items[0].originalFilename").value("persistent.txt"));
+    }
+
+    @Test
+    void managesPersistentChatSessionsByDocument() throws Exception {
+        upload("chapter.pdf", "chapter content");
+        upload("notes.txt", "notes content");
+
+        String createResponse = mockMvc.perform(post("/api/chat/sessions")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"documentId":1,"title":"Transformer 架构详解与注意力机制"}
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.id").isNumber())
+                .andExpect(jsonPath("$.document.id").value(1))
+                .andExpect(jsonPath("$.title").value("Transformer 架构详解与注意力机制"))
+                .andExpect(jsonPath("$.messages", hasSize(0)))
+                .andReturn()
+                .getResponse()
+                .getContentAsString(StandardCharsets.UTF_8);
+
+        long sessionId = Long.parseLong(createResponse.replaceAll(".*\\\"id\\\":(\\d+).*", "$1"));
+
+        mockMvc.perform(get("/api/chat/documents"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(2)))
+                .andExpect(jsonPath("$[?(@.id == 1)].sessionCount").value(1));
+
+        mockMvc.perform(get("/api/chat/sessions")
+                        .param("documentId", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(1)))
+                .andExpect(jsonPath("$[0].id").value(sessionId))
+                .andExpect(jsonPath("$[0].messageCount").value(0));
+
+        mockMvc.perform(post("/api/chat/sessions/{id}/messages", sessionId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"question":"请解释多头注意力机制。","topK":5}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(sessionId))
+                .andExpect(jsonPath("$.messages", hasSize(2)))
+                .andExpect(jsonPath("$.messages[0].role").value("USER"))
+                .andExpect(jsonPath("$.messages[0].content").value("请解释多头注意力机制。"))
+                .andExpect(jsonPath("$.messages[1].role").value("ASSISTANT"))
+                .andExpect(jsonPath("$.messages[1].status").value("SUCCESS"))
+                .andExpect(jsonPath("$.messages[1].citations", hasSize(1)))
+                .andExpect(jsonPath("$.messages[1].citations[0].chunkId").value("1-3"));
+
+        mockMvc.perform(patch("/api/chat/sessions/{id}", sessionId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"title":"重命名后的会话"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.title").value("重命名后的会话"));
+
+        mockMvc.perform(delete("/api/chat/sessions/{id}", sessionId))
+                .andExpect(status().isNoContent());
+
+        mockMvc.perform(get("/api/chat/sessions")
+                        .param("documentId", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(0)));
+    }
+
+    @Test
+    void chatUsesSavedTopKWhenRequestOmitsTopK() throws Exception {
+        upload("chapter.pdf", "chapter content");
+        mockMvc.perform(post("/api/chat/sessions")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"documentId":1,"title":"新对话"}
+                                """))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put("/api/settings")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "rag": {
+                                    "topK": 7,
+                                    "scoreThreshold": 0.30,
+                                    "chunkSize": 500,
+                                    "chunkOverlap": 80,
+                                    "currentDocumentOnly": true,
+                                    "showCitations": true
+                                  }
+                                }
+                                """))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/chat/sessions/1/messages")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"question":"默认 Top-K 是多少？"}
+                                """))
+                .andExpect(status().isOk());
+
+        assertThat(ragServer.lastQaBody()).contains("\"top_k\":7");
+    }
+
+    @Test
+    void chatPersistsUserAndAssistantErrorWhenRagQaFails() throws Exception {
+        upload("chapter.pdf", "chapter content");
+        mockMvc.perform(post("/api/chat/sessions")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"documentId":1,"title":"新对话"}
+                                """))
+                .andExpect(status().isCreated());
+        ragServer.failNextQa();
+
+        mockMvc.perform(post("/api/chat/sessions/1/messages")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"question":"这个问题会失败吗？"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.messages", hasSize(2)))
+                .andExpect(jsonPath("$.messages[0].role").value("USER"))
+                .andExpect(jsonPath("$.messages[1].role").value("ASSISTANT"))
+                .andExpect(jsonPath("$.messages[1].status").value("ERROR"))
+                .andExpect(jsonPath("$.messages[1].errorMessage", containsString("qa unavailable")));
+
+        mockMvc.perform(get("/api/chat/sessions/1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.messages", hasSize(2)))
+                .andExpect(jsonPath("$.messages[1].status").value("ERROR"));
     }
 
     private void upload(String filename, String content) throws Exception {
@@ -364,8 +559,11 @@ class DocumentApiTest {
         private final HttpServer server;
         private final AtomicInteger ingestStatus = new AtomicInteger(200);
         private final AtomicInteger deleteStatus = new AtomicInteger(204);
+        private final AtomicInteger qaStatus = new AtomicInteger(200);
         private final AtomicReference<String> lastIngestContentType = new AtomicReference<>("");
         private final AtomicReference<String> lastIngestBody = new AtomicReference<>("");
+        private final AtomicReference<String> lastChunksBody = new AtomicReference<>("");
+        private final AtomicReference<String> lastQaBody = new AtomicReference<>("");
         private final CopyOnWriteArrayList<String> deletedDocumentIds = new CopyOnWriteArrayList<>();
 
         private FakeRagServer() throws IOException {
@@ -391,8 +589,11 @@ class DocumentApiTest {
         private void reset() {
             ingestStatus.set(200);
             deleteStatus.set(204);
+            qaStatus.set(200);
             lastIngestContentType.set("");
             lastIngestBody.set("");
+            lastChunksBody.set("");
+            lastQaBody.set("");
             deletedDocumentIds.clear();
         }
 
@@ -412,6 +613,10 @@ class DocumentApiTest {
             deleteStatus.set(503);
         }
 
+        private void failNextQa() {
+            qaStatus.set(502);
+        }
+
         private void handleIngest(HttpExchange exchange) throws IOException {
             lastIngestContentType.set(exchange.getRequestHeaders().getFirst("Content-Type"));
             lastIngestBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
@@ -423,6 +628,11 @@ class DocumentApiTest {
         }
 
         private void handleDocument(HttpExchange exchange) throws IOException {
+            if ("POST".equals(exchange.getRequestMethod()) && exchange.getRequestURI().getPath().endsWith("/chunks")) {
+                handleChunks(exchange);
+                return;
+            }
+
             if (!"DELETE".equals(exchange.getRequestMethod())) {
                 send(exchange, 405, "{\"message\":\"method not allowed\"}");
                 return;
@@ -439,8 +649,33 @@ class DocumentApiTest {
             send(exchange, status, "{\"message\":\"document vectors not found\"}");
         }
 
+        private void handleChunks(HttpExchange exchange) throws IOException {
+            lastChunksBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            String path = exchange.getRequestURI().getPath();
+            String documentId = path.substring("/documents/".length(), path.length() - "/chunks".length());
+            send(exchange, 200, """
+                    [
+                      {
+                        "document_id": "%s",
+                        "source_name": "notes.txt",
+                        "chunk_id": "%s-0",
+                        "format": "TXT",
+                        "chunk_index": 0,
+                        "text": "真实文本块内容",
+                        "page": null
+                      }
+                    ]
+                    """.formatted(documentId, documentId));
+        }
+
         private void handleQa(HttpExchange exchange) throws IOException {
             String request = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+            lastQaBody.set(request);
+            int status = qaStatus.get();
+            if (status != 200) {
+                send(exchange, status, "{\"message\":\"qa unavailable\"}");
+                return;
+            }
             if (!request.contains("\"document_ids\"") || !request.contains("\"top_k\"")
                     || request.contains("\"documentIds\"") || request.contains("\"topK\"")) {
                 send(exchange, 400, "{\"message\":\"expected snake_case QA request\"}");
@@ -477,6 +712,14 @@ class DocumentApiTest {
 
         private String lastIngestBody() {
             return lastIngestBody.get();
+        }
+
+        private String lastChunksBody() {
+            return lastChunksBody.get();
+        }
+
+        private String lastQaBody() {
+            return lastQaBody.get();
         }
 
         private List<String> deletedDocumentIds() {

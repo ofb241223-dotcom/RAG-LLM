@@ -112,6 +112,24 @@ public record DocumentRecord(
         );
     }
 
+    public DocumentRecord reprocessRequired(Instant now) {
+        return new DocumentRecord(
+                id,
+                originalFilename,
+                format,
+                source,
+                DocumentProcessingStatus.REPROCESS_REQUIRED,
+                sizeBytes,
+                storagePath,
+                ragDocumentId,
+                chunkCount,
+                vectorCount,
+                "模型或分块配置已变更，请重新处理文档。",
+                uploadedAt,
+                now
+        );
+    }
+
     public DocumentRecord failed(String message, Instant now) {
         return new DocumentRecord(
                 id,

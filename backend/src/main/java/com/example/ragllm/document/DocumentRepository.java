@@ -10,5 +10,7 @@ public interface DocumentRepository {
 
     List<DocumentRecord> findAll();
 
+    int markReadyDocumentsForReprocess();
+
     Optional<DocumentRecord> deleteById(Long id);
 }

@@ -7,6 +7,7 @@ public record QaSource(
         @JsonAlias("source_name") String filename,
         @JsonAlias("chunk_id") String chunkId,
         Double score,
-        String text
+        String text,
+        Integer page
 ) {
 }

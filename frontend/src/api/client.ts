@@ -53,10 +53,15 @@ function getErrorMessage(payload: unknown, fallback: string): string {
 }
 
 export async function apiRequest<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const response = await fetch(buildApiUrl(path), {
-    ...options,
-    headers: options.headers ?? {},
-  });
+  let response: Response;
+  try {
+    response = await fetch(buildApiUrl(path), {
+      ...options,
+      headers: options.headers ?? {},
+    });
+  } catch (error) {
+    throw new ApiError('后端服务不可用，请确认前后端服务已启动。', 0, error);
+  }
   const payload = await readResponse(response);
 
   if (!response.ok) {

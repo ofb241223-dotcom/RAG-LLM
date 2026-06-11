@@ -1,8 +1,14 @@
 package com.example.ragllm.document;
 
 import java.time.LocalDate;
+import java.nio.charset.StandardCharsets;
+import java.util.List;
+import org.springframework.core.io.Resource;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -59,6 +65,23 @@ public class DocumentController {
     @GetMapping("/{id}")
     public DocumentDto get(@PathVariable Long id) {
         return documentService.get(id);
+    }
+
+    @GetMapping("/{id}/chunks")
+    public List<DocumentChunkDto> chunks(@PathVariable Long id) {
+        return documentService.chunks(id);
+    }
+
+    @GetMapping("/{id}/download")
+    public ResponseEntity<Resource> download(@PathVariable Long id) {
+        DocumentService.DownloadedDocument document = documentService.download(id);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.attachment()
+                        .filename(document.filename(), StandardCharsets.UTF_8)
+                        .build()
+                        .toString())
+                .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                .body(document.resource());
     }
 
     @PostMapping("/{id}/ingest")

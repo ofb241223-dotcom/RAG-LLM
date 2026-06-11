@@ -2,8 +2,46 @@ import { describe, expect, it, vi, afterEach } from 'vitest';
 import { ApiError, apiRequest } from './client';
 import { documentsApi } from './documents';
 
+const uploadedDocument = {
+  id: 11,
+  originalFilename: 'report.pdf',
+  format: 'PDF',
+  status: 'READY',
+  sizeBytes: 1024,
+  uploadedAt: '2026-06-10T00:00:00Z',
+  updatedAt: '2026-06-10T00:00:00Z',
+};
+
+class MockXMLHttpRequest {
+  static instances: MockXMLHttpRequest[] = [];
+
+  upload: {
+    onprogress: ((event: ProgressEvent) => void) | null;
+  } = {
+    onprogress: null,
+  };
+
+  onload: (() => void) | null = null;
+  onerror: (() => void) | null = null;
+  ontimeout: (() => void) | null = null;
+  onabort: (() => void) | null = null;
+  status = 201;
+  responseText = JSON.stringify(uploadedDocument);
+  response: string | null = null;
+  open = vi.fn();
+  send = vi.fn();
+  abort = vi.fn(() => {
+    this.onabort?.();
+  });
+
+  constructor() {
+    MockXMLHttpRequest.instances.push(this);
+  }
+}
+
 describe('apiRequest', () => {
   afterEach(() => {
+    MockXMLHttpRequest.instances = [];
     vi.unstubAllGlobals();
     vi.unstubAllEnvs();
   });
@@ -23,6 +61,21 @@ describe('apiRequest', () => {
       name: 'ApiError',
       status: 500,
       message: 'RAG service unavailable',
+    });
+  });
+
+  it('normalizes network failures into a readable ApiError', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new TypeError('Failed to fetch');
+      }),
+    );
+
+    await expect(apiRequest('/settings')).rejects.toMatchObject({
+      name: 'ApiError',
+      status: 0,
+      message: '后端服务不可用，请确认前后端服务已启动。',
     });
   });
 
@@ -141,5 +194,53 @@ describe('apiRequest', () => {
       }),
     );
     expect(fetchMock).toHaveBeenNthCalledWith(4, '/api/documents/9/ingest', expect.objectContaining({ method: 'POST' }));
+  });
+
+  it('reports XHR upload progress while preserving the upload response', async () => {
+    vi.stubGlobal('XMLHttpRequest', MockXMLHttpRequest);
+    const onUploadProgress = vi.fn();
+
+    const uploadPromise = documentsApi.upload(new File(['pdf'], 'report.pdf'), { onUploadProgress });
+    const xhr = MockXMLHttpRequest.instances[0];
+
+    xhr.upload.onprogress?.({ lengthComputable: true, loaded: 512, total: 1024 } as ProgressEvent);
+    xhr.onload?.();
+
+    await expect(uploadPromise).resolves.toMatchObject(uploadedDocument);
+    expect(onUploadProgress).toHaveBeenCalledWith(50);
+    expect(xhr.send).toHaveBeenCalledTimes(1);
+  });
+
+  it('aborts XHR upload when the abort signal is cancelled', async () => {
+    vi.stubGlobal('XMLHttpRequest', MockXMLHttpRequest);
+    const controller = new AbortController();
+
+    const uploadPromise = documentsApi.upload(new File(['pdf'], 'report.pdf'), { signal: controller.signal });
+    const xhr = MockXMLHttpRequest.instances[0];
+
+    controller.abort();
+
+    await expect(uploadPromise).rejects.toMatchObject({
+      name: 'ApiError',
+      status: 0,
+      message: '上传已取消',
+    });
+    await expect(uploadPromise).rejects.toBeInstanceOf(ApiError);
+    expect(xhr.abort).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not send XHR upload when the abort signal is already cancelled', async () => {
+    vi.stubGlobal('XMLHttpRequest', MockXMLHttpRequest);
+    const controller = new AbortController();
+    controller.abort();
+
+    const uploadPromise = documentsApi.upload(new File(['pdf'], 'report.pdf'), { signal: controller.signal });
+
+    await expect(uploadPromise).rejects.toMatchObject({
+      name: 'ApiError',
+      status: 0,
+      message: '上传已取消',
+    });
+    expect(MockXMLHttpRequest.instances).toHaveLength(0);
   });
 });

@@ -30,6 +30,18 @@ public class InMemoryDocumentRepository implements DocumentRepository {
     }
 
     @Override
+    public int markReadyDocumentsForReprocess() {
+        int count = 0;
+        for (DocumentRecord document : new ArrayList<>(documents.values())) {
+            if (document.status() == DocumentProcessingStatus.READY) {
+                documents.put(document.id(), document.reprocessRequired(java.time.Instant.now()));
+                count++;
+            }
+        }
+        return count;
+    }
+
+    @Override
     public Optional<DocumentRecord> deleteById(Long id) {
         return Optional.ofNullable(documents.remove(id));
     }

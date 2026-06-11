@@ -33,6 +33,8 @@ describe('App shell', () => {
     expect(within(navigation).getByText('文档中心')).toBeInTheDocument();
     expect(within(navigation).getByText('上传文档')).toBeInTheDocument();
     expect(within(navigation).getByText('文档问答')).toBeInTheDocument();
+    expect(within(navigation).getByText('对话历史')).toBeInTheDocument();
+    expect(within(navigation).getByText('系统设置')).toBeInTheDocument();
 
     expect(screen.getAllByTestId('stat-icon')).toHaveLength(4);
     expect(screen.getByText('向量总数')).toBeInTheDocument();
@@ -60,7 +62,7 @@ describe('App shell', () => {
     expect(screen.getByText('最近动态')).toBeInTheDocument();
 
     await waitFor(() => {
-      expect(screen.getByText('后端暂不可用，当前显示演示数据。')).toBeInTheDocument();
+      expect(screen.getByText('后端暂不可用，当前显示本地占位数据。')).toBeInTheDocument();
     });
 
     fireEvent.click(within(navigation).getByRole('button', { name: /文档中心/ }));
@@ -72,7 +74,16 @@ describe('App shell', () => {
 
     fireEvent.click(within(navigation).getByRole('button', { name: /文档问答/ }));
     expect(screen.getByRole('heading', { name: '文档问答' })).toBeInTheDocument();
-    expect(screen.getByLabelText('问题输入')).toBeInTheDocument();
+    expect(screen.getByLabelText('输入文档问题')).toBeInTheDocument();
+
+    fireEvent.click(within(navigation).getByRole('button', { name: /对话历史/ }));
+    expect(screen.getByRole('heading', { name: '对话历史' })).toBeInTheDocument();
+    expect(screen.getByLabelText('继续提问')).toBeInTheDocument();
+
+    fireEvent.click(within(navigation).getByRole('button', { name: /系统设置/ }));
+    await waitFor(() => {
+      expect(screen.getByText('系统设置不可用。')).toBeInTheDocument();
+    });
   });
 
   it('uses a chat-with-dots icon for the conversation total dashboard stat', () => {

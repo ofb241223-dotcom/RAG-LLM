@@ -3,6 +3,7 @@ package com.example.ragllm.document;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -13,8 +14,8 @@ import org.springframework.web.client.RestClient;
 public class DocumentConfiguration {
 
     @Bean
-    DocumentRepository documentRepository() {
-        return new InMemoryDocumentRepository();
+    DocumentRepository documentRepository(JdbcTemplate jdbcTemplate) {
+        return new JdbcDocumentRepository(jdbcTemplate);
     }
 
     @Bean

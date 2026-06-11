@@ -1,4 +1,4 @@
-export type ProcessingStatus = 'UPLOADED' | 'PARSING' | 'EMBEDDING' | 'READY' | 'FAILED';
+export type ProcessingStatus = 'UPLOADED' | 'PARSING' | 'EMBEDDING' | 'READY' | 'FAILED' | 'REPROCESS_REQUIRED';
 
 export type DocumentFormat = 'PDF' | 'TXT' | 'DOCX' | 'DOC';
 
@@ -49,4 +49,18 @@ export interface DocumentBatchResult {
     id: number | null;
     message: string;
   }>;
+}
+
+export interface DocumentChunkDto {
+  document_id?: string;
+  documentId?: string;
+  chunk_id?: string;
+  chunkId?: string;
+  source_name?: string;
+  sourceName?: string;
+  format: DocumentFormat | string;
+  chunk_index?: number;
+  chunkIndex?: number;
+  text: string;
+  page?: number | null;
 }

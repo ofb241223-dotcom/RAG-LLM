@@ -10,6 +10,8 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
+import com.example.ragllm.settings.SettingsService;
+import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
@@ -18,23 +20,25 @@ import org.springframework.web.multipart.MultipartFile;
 public class DocumentService {
     private static final int DEFAULT_PAGE_SIZE = 20;
     private static final int MAX_PAGE_SIZE = 100;
-    private static final int DEFAULT_TOP_K = 5;
 
     private final DocumentRepository repository;
     private final FileDocumentStorage storage;
     private final RagServiceClient ragServiceClient;
     private final Clock clock;
+    private final SettingsService settingsService;
 
     public DocumentService(
             DocumentRepository repository,
             FileDocumentStorage storage,
             RagServiceClient ragServiceClient,
-            Clock clock
+            Clock clock,
+            SettingsService settingsService
     ) {
         this.repository = repository;
         this.storage = storage;
         this.ragServiceClient = ragServiceClient;
         this.clock = clock;
+        this.settingsService = settingsService;
     }
 
     public DocumentDto upload(MultipartFile file) {
@@ -54,6 +58,7 @@ public class DocumentService {
             Path storagePath = storage.store(file, record.id(), originalFilename);
             record = repository.save(record.withStoragePath(storagePath.toString(), clock.instant()));
         } catch (IOException exception) {
+            repository.deleteById(record.id());
             throw ApiException.internal("Failed to store uploaded file");
         }
 
@@ -95,10 +100,35 @@ public class DocumentService {
         return DocumentDto.from(findRecord(id));
     }
 
+    public List<DocumentChunkDto> chunks(Long id) {
+        DocumentRecord record = findRecord(id);
+        String ragDocumentId = StringUtils.hasText(record.ragDocumentId())
+                ? record.ragDocumentId()
+                : record.id() == null ? null : String.valueOf(record.id());
+        if (!StringUtils.hasText(ragDocumentId)) {
+            return List.of();
+        }
+
+        try {
+            return ragServiceClient.listChunks(ragDocumentId, settingsService.currentRuntimeConfig());
+        } catch (RagServiceException exception) {
+            throw ApiException.badGateway("RAG service chunks failed: " + exception.getMessage());
+        }
+    }
+
+    public DownloadedDocument download(Long id) {
+        DocumentRecord record = findRecord(id);
+        try {
+            return new DownloadedDocument(record.originalFilename(), record.format(), storage.load(record.storagePath()));
+        } catch (IOException exception) {
+            throw ApiException.notFound("Stored document file not found: " + id);
+        }
+    }
+
     public DocumentDto ingest(Long id) {
         DocumentRecord record = repository.save(findRecord(id).parsing(clock.instant()));
         try {
-            RagIngestResponse response = ragServiceClient.ingest(RagIngestRequest.from(record));
+            RagIngestResponse response = ragServiceClient.ingest(RagIngestRequest.from(record), settingsService.currentRuntimeConfig());
             return DocumentDto.from(repository.save(record.ready(response, clock.instant())));
         } catch (RagServiceException exception) {
             return DocumentDto.from(repository.save(record.failed(exception.getMessage(), clock.instant())));
@@ -137,14 +167,20 @@ public class DocumentService {
             throw ApiException.badRequest("question is required");
         }
 
+        var runtimeConfig = settingsService.currentRuntimeConfig();
+        Integer topK = request.topK() == null || request.topK() <= 0 ? runtimeConfig.topK() : request.topK();
+        List<Long> documentIds = runtimeConfig.currentDocumentOnly()
+                ? request.documentIds() == null ? List.of() : request.documentIds()
+                : null;
         QaAskRequest normalizedRequest = new QaAskRequest(
                 request.question().strip(),
-                request.documentIds() == null ? List.of() : request.documentIds(),
-                request.topK() == null || request.topK() <= 0 ? DEFAULT_TOP_K : request.topK()
+                documentIds,
+                topK
         );
 
         try {
-            return ragServiceClient.ask(normalizedRequest);
+            QaAnswer answer = ragServiceClient.ask(normalizedRequest, runtimeConfig);
+            return runtimeConfig.showCitations() ? answer : new QaAnswer(answer.answer(), List.of());
         } catch (RagServiceException exception) {
             throw ApiException.badGateway("RAG service QA failed: " + exception.getMessage());
         }
@@ -210,7 +246,7 @@ public class DocumentService {
         }
 
         try {
-            ragServiceClient.deleteDocument(documentId);
+            ragServiceClient.deleteDocument(documentId, settingsService.currentRuntimeConfig());
         } catch (RagServiceException exception) {
             throw ApiException.badGateway("RAG service delete failed: " + exception.getMessage());
         }
@@ -227,5 +263,8 @@ public class DocumentService {
             return DEFAULT_PAGE_SIZE;
         }
         return Math.min(size, MAX_PAGE_SIZE);
+    }
+
+    public record DownloadedDocument(String filename, DocumentFormat format, Resource resource) {
     }
 }

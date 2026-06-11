@@ -9,6 +9,7 @@ type DocumentsPageApi = Pick<DocumentsApi, 'list' | 'stats' | 'delete' | 'batchD
 interface DocumentsPageProps {
   documentsApi?: DocumentsPageApi;
   onNavigate?: (view: 'documents' | 'upload' | 'chat') => void;
+  onOpenDocumentDetail?: (document: DocumentDto) => void;
 }
 
 type FilterState = {
@@ -72,7 +73,7 @@ function formatSuccessRate(value: number): string {
   return `${Number.isInteger(percent) ? percent.toFixed(0) : percent.toFixed(1)}%`;
 }
 
-export function DocumentsPage({ documentsApi = defaultDocumentsApi, onNavigate }: DocumentsPageProps) {
+export function DocumentsPage({ documentsApi = defaultDocumentsApi, onNavigate, onOpenDocumentDetail }: DocumentsPageProps) {
   const [documents, setDocuments] = useState<DocumentDto[]>([]);
   const [stats, setStats] = useState<DocumentStats>(EMPTY_STATS);
   const [filters, setFilters] = useState<FilterState>(EMPTY_FILTERS);
@@ -85,6 +86,7 @@ export function DocumentsPage({ documentsApi = defaultDocumentsApi, onNavigate }
   const [error, setError] = useState<string | undefined>();
   const [actionError, setActionError] = useState<string | undefined>();
   const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState | null>(null);
+  const [toolbarDialog, setToolbarDialog] = useState<'more' | 'settings' | null>(null);
   const hasLoadedRef = useRef(false);
 
   const queryParams = useMemo(() => buildListParams(filters, page, pageSize), [filters, page, pageSize]);
@@ -334,13 +336,13 @@ export function DocumentsPage({ documentsApi = defaultDocumentsApi, onNavigate }
             <RefreshCw size={16} />
             重新处理
           </button>
-          <button aria-label="更多操作" className="icon-button toolbar-icon" type="button">
+          <button aria-label="更多操作" className="icon-button toolbar-icon" type="button" onClick={() => setToolbarDialog('more')}>
             <MoreHorizontal size={17} />
           </button>
           <button aria-label="刷新文档列表" className="icon-button toolbar-icon" disabled={refreshing} type="button" onClick={() => void loadDocuments()}>
             <RefreshCw size={17} />
           </button>
-          <button aria-label="列表设置" className="icon-button toolbar-icon" type="button">
+          <button aria-label="列表设置" className="icon-button toolbar-icon" type="button" onClick={() => setToolbarDialog('settings')}>
             <Settings2 size={17} />
           </button>
         </div>
@@ -358,6 +360,7 @@ export function DocumentsPage({ documentsApi = defaultDocumentsApi, onNavigate }
           error={error}
           loading={loading}
           onDelete={deleteDocument}
+          onOpenDetail={onOpenDocumentDetail}
           onRefresh={loadDocuments}
           onReprocess={reprocessDocument}
           onToggleAll={toggleCurrentPage}
@@ -408,6 +411,38 @@ export function DocumentsPage({ documentsApi = defaultDocumentsApi, onNavigate }
               </button>
               <button className="danger-button" type="button" onClick={confirmDelete}>
                 确认删除
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
+      {toolbarDialog ? (
+        <div className="dialog-backdrop" role="presentation">
+          <section aria-labelledby="document-toolbar-dialog-title" aria-modal="true" className="confirm-dialog" role="dialog">
+            <div className="confirm-dialog-content">
+              <h2 id="document-toolbar-dialog-title">{toolbarDialog === 'more' ? '更多操作' : '列表设置'}</h2>
+              {toolbarDialog === 'more' ? (
+                <p>当前已选择 {selectedCount} 项，可使用批量删除或重新处理完成批量操作。</p>
+              ) : (
+                <label className="dialog-field">
+                  每页条数
+                  <select value={pageSize} onChange={(event) => {
+                    setPage(0);
+                    setPageSize(Number(event.target.value));
+                  }}>
+                    {PAGE_SIZE_OPTIONS.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+            </div>
+            <div className="dialog-actions">
+              <button className="primary-button" type="button" onClick={() => setToolbarDialog(null)}>
+                关闭
               </button>
             </div>
           </section>

@@ -1,8 +1,9 @@
 import { ApiError, apiRequest, buildApiUrl } from './client';
-import type { DocumentBatchResult, DocumentDto, DocumentListParams, DocumentListResponse, DocumentStats } from '../types/document';
+import type { DocumentBatchResult, DocumentChunkDto, DocumentDto, DocumentListParams, DocumentListResponse, DocumentStats } from '../types/document';
 
 export interface UploadOptions {
   onUploadProgress?: (percent: number) => void;
+  signal?: AbortSignal;
 }
 
 export interface DocumentsApi {
@@ -10,6 +11,8 @@ export interface DocumentsApi {
   stats(): Promise<DocumentStats>;
   upload(file: File, options?: UploadOptions): Promise<DocumentDto>;
   get(documentId: number): Promise<DocumentDto>;
+  chunks(documentId: number): Promise<DocumentChunkDto[]>;
+  downloadUrl(documentId: number): string;
   reprocess(documentId: number): Promise<DocumentDto>;
   delete(documentId: number): Promise<void>;
   batchDelete(ids: number[]): Promise<DocumentBatchResult>;
@@ -64,10 +67,18 @@ export const documentsApi: DocumentsApi = {
   },
 
   upload(file, options) {
+    if (options?.signal?.aborted) {
+      return Promise.reject(new ApiError('上传已取消', 0));
+    }
+
     return new Promise<DocumentDto>((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       const formData = new FormData();
       formData.append('file', file);
+      const abortUpload = () => xhr.abort();
+      const cleanupAbortListener = () => {
+        options?.signal?.removeEventListener('abort', abortUpload);
+      };
 
       xhr.open('POST', buildApiUrl('/documents'));
 
@@ -80,6 +91,8 @@ export const documentsApi: DocumentsApi = {
       };
 
       xhr.onload = () => {
+        cleanupAbortListener();
+
         if (xhr.status >= 200 && xhr.status < 300) {
           try {
             resolve(parseUploadResponse(xhr));
@@ -92,14 +105,34 @@ export const documentsApi: DocumentsApi = {
         reject(new ApiError(xhr.responseText || `上传失败 (${xhr.status})`, xhr.status));
       };
 
-      xhr.onerror = () => reject(new ApiError('网络错误，上传失败', 0));
-      xhr.ontimeout = () => reject(new ApiError('上传超时', 0));
+      xhr.onerror = () => {
+        cleanupAbortListener();
+        reject(new ApiError('网络错误，上传失败', 0));
+      };
+      xhr.ontimeout = () => {
+        cleanupAbortListener();
+        reject(new ApiError('上传超时', 0));
+      };
+      xhr.onabort = () => {
+        cleanupAbortListener();
+        reject(new ApiError('上传已取消', 0));
+      };
+
+      options?.signal?.addEventListener('abort', abortUpload, { once: true });
       xhr.send(formData);
     });
   },
 
   get(documentId) {
     return apiRequest<DocumentDto>(`/documents/${documentId}`);
+  },
+
+  chunks(documentId) {
+    return apiRequest<DocumentChunkDto[]>(`/documents/${documentId}/chunks`);
+  },
+
+  downloadUrl(documentId) {
+    return buildApiUrl(`/documents/${documentId}/download`);
   },
 
   reprocess(documentId) {

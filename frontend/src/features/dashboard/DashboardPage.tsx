@@ -36,7 +36,7 @@ export function DashboardPage({ documentsApi = defaultDocumentsApi, onNavigate }
     } catch {
       setDocuments(demoDocuments);
       setTotal(128);
-      setError('后端暂不可用，当前显示演示数据。');
+      setError('后端暂不可用，当前显示本地占位数据。');
     }
   }, [documentsApi]);
 

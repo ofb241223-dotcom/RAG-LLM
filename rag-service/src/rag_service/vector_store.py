@@ -52,6 +52,7 @@ class ChromaVectorStore:
         if not chunks:
             return 0
 
+        self.delete_document(document_id)
         ids = [f"{document_id}-{chunk.chunk_index}" for chunk in chunks]
         metadatas = []
         for chunk in chunks:
@@ -111,6 +112,32 @@ class ChromaVectorStore:
                 )
             )
         return chunks
+
+    def list_document_chunks(self, document_id: str) -> list[RetrievedChunk]:
+        result = self.collection.get(
+            where={"document_id": document_id},
+            include=["documents", "metadatas"],
+        )
+        ids = result.get("ids", [])
+        documents = result.get("documents", [])
+        metadatas = result.get("metadatas", [])
+
+        chunks: list[RetrievedChunk] = []
+        for chunk_id, text, metadata in zip(ids, documents, metadatas, strict=False):
+            metadata = metadata or {}
+            chunks.append(
+                RetrievedChunk(
+                    document_id=str(metadata.get("document_id", "")),
+                    chunk_id=str(chunk_id),
+                    source_name=str(metadata.get("source_name", "")),
+                    format=str(metadata.get("format", "")),
+                    chunk_index=int(metadata.get("chunk_index", 0)),
+                    text=text or "",
+                    score=1.0,
+                    page=metadata.get("page") if isinstance(metadata.get("page"), int) else None,
+                )
+            )
+        return sorted(chunks, key=lambda chunk: chunk.chunk_index)
 
     def delete_document(self, document_id: str) -> None:
         self.collection.delete(where={"document_id": document_id})

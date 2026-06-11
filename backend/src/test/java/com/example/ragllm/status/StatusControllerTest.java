@@ -28,7 +28,7 @@ class StatusControllerTest {
                 .andExpect(jsonPath("$.status").value("UP"))
                 .andExpect(jsonPath("$.documentFormats", containsInAnyOrder("PDF", "TXT", "DOCX", "DOC")))
                 .andExpect(jsonPath("$.processingStatuses",
-                        containsInAnyOrder("UPLOADED", "PARSING", "EMBEDDING", "READY", "FAILED")));
+                        containsInAnyOrder("UPLOADED", "PARSING", "EMBEDDING", "REPROCESS_REQUIRED", "READY", "FAILED")));
     }
 
     @Test

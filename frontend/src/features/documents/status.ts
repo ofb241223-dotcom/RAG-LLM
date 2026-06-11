@@ -6,6 +6,7 @@ const STATUS_LABELS: Record<ProcessingStatus, string> = {
   EMBEDDING: '向量化',
   READY: '已完成',
   FAILED: '失败',
+  REPROCESS_REQUIRED: '需重新处理',
 };
 
 export function getStatusLabel(status: ProcessingStatus): string {
@@ -17,5 +18,5 @@ export function getStatusClass(status: ProcessingStatus): string {
 }
 
 export function isTerminalStatus(status: ProcessingStatus): boolean {
-  return status === 'READY' || status === 'FAILED';
+  return status === 'READY' || status === 'FAILED' || status === 'REPROCESS_REQUIRED';
 }
