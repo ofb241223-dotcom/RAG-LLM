@@ -6,6 +6,8 @@ from typing import Callable, Iterable, Protocol
 from openai import OpenAI
 from tenacity import retry, stop_after_attempt, wait_fixed
 
+from rag_service.observability import RequestLogger
+
 try:
     from google import genai
 except ImportError:  # pragma: no cover - exercised only when dependency is missing in runtime env.
@@ -70,6 +72,7 @@ class OpenAICompatibleEmbeddingProvider:
     base_url = "https://dashscope.aliyuncs.com/compatible-mode/v1"
     missing_key_message = "DASHSCOPE_API_KEY is not configured."
     request_error_message = "DashScope embedding request failed."
+    service_name = "OpenAI Compatible"
 
     def __init__(
         self,
@@ -78,11 +81,13 @@ class OpenAICompatibleEmbeddingProvider:
         model: str,
         client_factory: Callable[..., object] = OpenAI,
         batch_size: int = 10,
+        request_logger: RequestLogger | None = None,
     ) -> None:
         self.api_key = api_key
         self.model = model
         self.client_factory = client_factory
         self.batch_size = batch_size
+        self.request_logger = request_logger
 
     def embed_texts(self, texts: list[str], *, task_type: str | None = None) -> list[list[float]]:
         if _is_missing_key(self.api_key):
@@ -94,7 +99,19 @@ class OpenAICompatibleEmbeddingProvider:
         vectors: list[list[float]] = []
         for index in range(0, len(texts), self.batch_size):
             vectors.extend(self._embed_batch(client, texts[index : index + self.batch_size]))
+        self._log("EMBED", 200, f"{len(texts)} texts")
         return vectors
+
+    def _log(self, method: str, status: int, summary: str) -> None:
+        if self.request_logger is not None:
+            self.request_logger({
+                "direction": "PROVIDER",
+                "service": self.service_name,
+                "method": method,
+                "path": self.model,
+                "status": status,
+                "summary": summary,
+            })
 
     @retry(stop=stop_after_attempt(2), wait=wait_fixed(1), reraise=True)
     def _embed_batch(self, client: object, texts: list[str]) -> list[list[float]]:
@@ -112,6 +129,7 @@ class OpenRouterEmbeddingProvider(OpenAICompatibleEmbeddingProvider):
     base_url = "https://openrouter.ai/api/v1"
     missing_key_message = "OPENROUTER_API_KEY is not configured."
     request_error_message = "OpenRouter embedding request failed."
+    service_name = "OpenRouter"
 
 
 def _create_google_client(api_key: str) -> object:
@@ -128,11 +146,13 @@ class GoogleGeminiEmbeddingProvider:
         model: str,
         client_factory: GoogleClientFactory | None = None,
         batch_size: int = 10,
+        request_logger: RequestLogger | None = None,
     ) -> None:
         self.api_key = api_key
         self.model = model
         self.client_factory = client_factory or _create_google_client
         self.batch_size = batch_size
+        self.request_logger = request_logger
 
     def embed_texts(self, texts: list[str], *, task_type: str | None = None) -> list[list[float]]:
         if _is_missing_key(self.api_key):
@@ -158,7 +178,19 @@ class GoogleGeminiEmbeddingProvider:
                 raise
             raise ProviderRequestError("Google Gemini embedding request failed.") from error
 
+        self._log("EMBED", 200, f"{len(texts)} texts")
         return [list(embedding.values) for embedding in embeddings]
+
+    def _log(self, method: str, status: int, summary: str) -> None:
+        if self.request_logger is not None:
+            self.request_logger({
+                "direction": "PROVIDER",
+                "service": "Google Gemini",
+                "method": method,
+                "path": self.model,
+                "status": status,
+                "summary": summary,
+            })
 
 
 class GoogleGeminiLlmProvider:
@@ -172,6 +204,7 @@ class GoogleGeminiLlmProvider:
         max_tokens: int | None = None,
         top_p: float | None = None,
         system_prompt: str | None = None,
+        request_logger: RequestLogger | None = None,
     ) -> None:
         self.api_key = api_key
         self.model = model
@@ -180,6 +213,7 @@ class GoogleGeminiLlmProvider:
         self.max_tokens = max_tokens
         self.top_p = top_p
         self.system_prompt = system_prompt or "你是一个严谨的文档问答助手，只能依据给定引用片段回答。\n如果无法从资料中读取答案,请诚实说明"
+        self.request_logger = request_logger
 
     def generate_answer(self, *, question: str, contexts: Iterable[LlmContext]) -> str:
         if _is_missing_key(self.api_key):
@@ -208,13 +242,26 @@ class GoogleGeminiLlmProvider:
         except Exception as error:
             raise ProviderRequestError("Google Gemini chat request failed.") from error
 
+        self._log("CHAT", 200, f"{len(context_list)} contexts")
         return getattr(response, "text", None) or ""
+
+    def _log(self, method: str, status: int, summary: str) -> None:
+        if self.request_logger is not None:
+            self.request_logger({
+                "direction": "PROVIDER",
+                "service": "Google Gemini",
+                "method": method,
+                "path": self.model,
+                "status": status,
+                "summary": summary,
+            })
 
 
 class OpenAICompatibleLlmProvider:
     base_url = "https://api.deepseek.com"
     missing_key_message = "DEEPSEEK_API_KEY is not configured."
     request_error_message = "DeepSeek chat request failed."
+    service_name = "OpenAI Compatible"
 
     def __init__(
         self,
@@ -227,6 +274,7 @@ class OpenAICompatibleLlmProvider:
         top_p: float | None = None,
         frequency_penalty: float | None = None,
         system_prompt: str | None = None,
+        request_logger: RequestLogger | None = None,
     ) -> None:
         self.api_key = api_key
         self.model = model
@@ -236,6 +284,7 @@ class OpenAICompatibleLlmProvider:
         self.top_p = top_p
         self.frequency_penalty = frequency_penalty
         self.system_prompt = system_prompt or "你是一个严谨的文档问答助手，只能依据给定引用片段回答。\n如果无法从资料中读取答案,请诚实说明"
+        self.request_logger = request_logger
 
     def generate_answer(self, *, question: str, contexts: Iterable[LlmContext]) -> str:
         if _is_missing_key(self.api_key):
@@ -269,10 +318,23 @@ class OpenAICompatibleLlmProvider:
         except Exception as error:
             raise ProviderRequestError(self.request_error_message) from error
 
+        self._log("CHAT", 200, f"{len(context_list)} contexts")
         return response.choices[0].message.content or ""
+
+    def _log(self, method: str, status: int, summary: str) -> None:
+        if self.request_logger is not None:
+            self.request_logger({
+                "direction": "PROVIDER",
+                "service": self.service_name,
+                "method": method,
+                "path": self.model,
+                "status": status,
+                "summary": summary,
+            })
 
 
 class OpenRouterLlmProvider(OpenAICompatibleLlmProvider):
     base_url = "https://openrouter.ai/api/v1"
     missing_key_message = "OPENROUTER_API_KEY is not configured."
     request_error_message = "OpenRouter chat request failed."
+    service_name = "OpenRouter"

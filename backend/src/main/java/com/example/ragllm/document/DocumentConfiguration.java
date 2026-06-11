@@ -5,6 +5,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
+import com.example.ragllm.observability.RequestLogStore;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -46,7 +47,8 @@ public class DocumentConfiguration {
     RagServiceClient ragServiceClient(
             @Value("${rag.service.base-url:${RAG_SERVICE_URL:http://localhost:8000}}") String baseUrl,
             @Value("${rag.service.connect-timeout-seconds:${RAG_SERVICE_CONNECT_TIMEOUT_SECONDS:3}}") long connectTimeoutSeconds,
-            @Value("${rag.service.read-timeout-seconds:${RAG_SERVICE_READ_TIMEOUT_SECONDS:180}}") long readTimeoutSeconds
+            @Value("${rag.service.read-timeout-seconds:${RAG_SERVICE_READ_TIMEOUT_SECONDS:180}}") long readTimeoutSeconds,
+            RequestLogStore requestLogStore
     ) {
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
         requestFactory.setConnectTimeout(Duration.ofSeconds(connectTimeoutSeconds));
@@ -56,7 +58,7 @@ public class DocumentConfiguration {
                 .baseUrl(stripTrailingSlash(baseUrl))
                 .requestFactory(requestFactory)
                 .build();
-        return new RestClientRagServiceClient(restClient);
+        return new RestClientRagServiceClient(restClient, requestLogStore);
     }
 
     @Bean

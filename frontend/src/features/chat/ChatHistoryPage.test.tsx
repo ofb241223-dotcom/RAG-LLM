@@ -35,6 +35,7 @@ describe('ChatHistoryPage', () => {
     const sessionList = await screen.findByLabelText('当前文档对话列表');
     expect(await within(sessionList).findByText('Transformer 架构详解与注意力机制')).toBeInTheDocument();
     expect(await screen.findByText('请详细解释 Transformer 架构中的多头注意力机制的工作原理，并举例说明。')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '回收站' })).not.toBeInTheDocument();
   });
 
   it('creates a new conversation for the selected document only', async () => {

@@ -79,9 +79,7 @@ public class ChatService {
         String title = StringUtils.hasText(request == null ? null : request.title())
                 ? request.title().strip()
                 : session.title();
-        boolean archived = request != null && request.archived() != null ? request.archived() : session.archived();
-        ChatSessionStatus status = archived ? ChatSessionStatus.ARCHIVED : ChatSessionStatus.ACTIVE;
-        chatRepository.updateSession(session.id(), title, status, archived, clock.instant());
+        chatRepository.updateSession(session.id(), title, session.status(), clock.instant());
         return toDetail(requireSession(session.id()));
     }
 
@@ -106,7 +104,7 @@ public class ChatService {
         List<Long> documentIds = runtimeConfig.currentDocumentOnly() ? List.of(session.documentId()) : null;
 
         if (existingMessages == 0 && "新对话".equals(session.title())) {
-            chatRepository.updateSession(session.id(), titleFromQuestion(normalizedQuestion), session.status(), session.archived(), now);
+            chatRepository.updateSession(session.id(), titleFromQuestion(normalizedQuestion), session.status(), now);
             session = requireSession(session.id());
         }
 

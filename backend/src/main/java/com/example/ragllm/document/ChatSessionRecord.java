@@ -7,7 +7,6 @@ public record ChatSessionRecord(
         Long documentId,
         String title,
         ChatSessionStatus status,
-        boolean archived,
         Instant createdAt,
         Instant updatedAt
 ) {

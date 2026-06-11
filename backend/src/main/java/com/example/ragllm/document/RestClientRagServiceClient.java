@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.example.ragllm.settings.RuntimeModelConfig;
 import com.example.ragllm.settings.SettingsTestResponse;
+import com.example.ragllm.observability.RequestLogStore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
@@ -32,13 +33,16 @@ public class RestClientRagServiceClient implements RagServiceClient {
             };
 
     private final RestClient restClient;
+    private final RequestLogStore requestLogStore;
 
-    public RestClientRagServiceClient(RestClient restClient) {
+    public RestClientRagServiceClient(RestClient restClient, RequestLogStore requestLogStore) {
         this.restClient = restClient;
+        this.requestLogStore = requestLogStore;
     }
 
     @Override
     public RagIngestResponse ingest(RagIngestRequest request, RuntimeModelConfig runtimeConfig) {
+        long started = System.nanoTime();
         try {
             MultiValueMap<String, Object> body = buildIngestBody(request, runtimeConfig);
             RagIngestResponse response = restClient.post()
@@ -50,19 +54,23 @@ public class RestClientRagServiceClient implements RagServiceClient {
             if (response == null) {
                 throw new RagServiceException("RAG service returned an empty ingest response");
             }
+            recordRagCall("POST", "/documents/ingest", 200, started, "documentId=%s filename=%s".formatted(request.documentId(), request.originalFilename()));
             return response;
         } catch (RestClientResponseException exception) {
+            recordRagCall("POST", "/documents/ingest", exception.getStatusCode().value(), started, extractErrorMessage(exception));
             throw new RagServiceException(extractErrorMessage(exception), exception);
         } catch (RestClientException exception) {
+            recordRagCall("POST", "/documents/ingest", 0, started, exception.getMessage());
             throw new RagServiceException("RAG service request failed", exception);
         }
     }
 
     @Override
     public RagIngestResponse ingestWithProgress(RagIngestRequest request, RuntimeModelConfig runtimeConfig, Consumer<RagIngestEvent> eventConsumer) {
+        long started = System.nanoTime();
         try {
             MultiValueMap<String, Object> body = buildIngestBody(request, runtimeConfig);
-            return restClient.post()
+            RagIngestResponse ingestResponse = restClient.post()
                     .uri("/documents/ingest/events")
                     .contentType(MediaType.MULTIPART_FORM_DATA)
                     .accept(MediaType.APPLICATION_NDJSON)
@@ -95,11 +103,16 @@ public class RestClientRagServiceClient implements RagServiceClient {
                         }
                         return finalResponse;
                     });
+            recordRagCall("POST", "/documents/ingest/events", 200, started, "documentId=%s filename=%s".formatted(request.documentId(), request.originalFilename()));
+            return ingestResponse;
         } catch (RagServiceException exception) {
+            recordRagCall("POST", "/documents/ingest/events", 502, started, exception.getMessage());
             throw exception;
         } catch (RestClientResponseException exception) {
+            recordRagCall("POST", "/documents/ingest/events", exception.getStatusCode().value(), started, extractErrorMessage(exception));
             throw new RagServiceException(extractErrorMessage(exception), exception);
         } catch (Exception exception) {
+            recordRagCall("POST", "/documents/ingest/events", 0, started, exception.getMessage());
             throw new RagServiceException("RAG service progress request failed", exception);
         }
     }
@@ -130,6 +143,7 @@ public class RestClientRagServiceClient implements RagServiceClient {
 
     @Override
     public QaAnswer ask(QaAskRequest request, RuntimeModelConfig runtimeConfig) {
+        long started = System.nanoTime();
         try {
             QaAnswer response = restClient.post()
                     .uri("/qa")
@@ -139,16 +153,20 @@ public class RestClientRagServiceClient implements RagServiceClient {
             if (response == null) {
                 throw new RagServiceException("RAG service returned an empty QA response");
             }
+            recordRagCall("POST", "/qa", 200, started, "topK=%d documents=%s".formatted(request.topK(), request.documentIds()));
             return response;
         } catch (RestClientResponseException exception) {
+            recordRagCall("POST", "/qa", exception.getStatusCode().value(), started, extractErrorMessage(exception));
             throw new RagServiceException(extractErrorMessage(exception), exception);
         } catch (RestClientException exception) {
+            recordRagCall("POST", "/qa", 0, started, exception.getMessage());
             throw new RagServiceException("RAG service request failed", exception);
         }
     }
 
     @Override
     public SettingsTestResponse testProvider(String kind, RuntimeModelConfig runtimeConfig) {
+        long started = System.nanoTime();
         try {
             SettingsTestResponse response = restClient.post()
                     .uri("/providers/test")
@@ -158,10 +176,13 @@ public class RestClientRagServiceClient implements RagServiceClient {
             if (response == null) {
                 throw new RagServiceException("RAG service returned an empty provider test response");
             }
+            recordRagCall("POST", "/providers/test", 200, started, "kind=%s llm=%s embedding=%s".formatted(kind, response.llmModel(), response.embeddingModel()));
             return response;
         } catch (RestClientResponseException exception) {
+            recordRagCall("POST", "/providers/test", exception.getStatusCode().value(), started, extractErrorMessage(exception));
             throw new RagServiceException(extractErrorMessage(exception), exception);
         } catch (RestClientException exception) {
+            recordRagCall("POST", "/providers/test", 0, started, exception.getMessage());
             throw new RagServiceException("RAG service request failed", exception);
         }
     }
@@ -172,18 +193,23 @@ public class RestClientRagServiceClient implements RagServiceClient {
             throw new RagServiceException("Document id is missing");
         }
 
+        long started = System.nanoTime();
         try {
             restClient.method(HttpMethod.DELETE)
                     .uri("/documents/{documentId}", documentId)
                     .body(new RagDeleteRequest(runtimeConfig))
                     .retrieve()
                     .toBodilessEntity();
+            recordRagCall("DELETE", "/documents/" + documentId, 204, started, "documentId=%s".formatted(documentId));
         } catch (RestClientResponseException exception) {
             if (isNotFound(exception.getStatusCode())) {
+                recordRagCall("DELETE", "/documents/" + documentId, 404, started, "document already absent");
                 return;
             }
+            recordRagCall("DELETE", "/documents/" + documentId, exception.getStatusCode().value(), started, extractErrorMessage(exception));
             throw new RagServiceException(extractErrorMessage(exception), exception);
         } catch (RestClientException exception) {
+            recordRagCall("DELETE", "/documents/" + documentId, 0, started, exception.getMessage());
             throw new RagServiceException("RAG service request failed", exception);
         }
     }
@@ -194,18 +220,31 @@ public class RestClientRagServiceClient implements RagServiceClient {
             throw new RagServiceException("Document id is missing");
         }
 
+        long started = System.nanoTime();
         try {
             List<DocumentChunkDto> response = restClient.post()
                     .uri("/documents/{documentId}/chunks", documentId)
                     .body(new RagRuntimeConfigRequest(runtimeConfig))
                     .retrieve()
                     .body(DOCUMENT_CHUNK_LIST);
-            return response == null ? List.of() : response;
+            List<DocumentChunkDto> chunks = response == null ? List.of() : response;
+            recordRagCall("POST", "/documents/" + documentId + "/chunks", 200, started, "chunks=%d".formatted(chunks.size()));
+            return chunks;
         } catch (RestClientResponseException exception) {
+            recordRagCall("POST", "/documents/" + documentId + "/chunks", exception.getStatusCode().value(), started, extractErrorMessage(exception));
             throw new RagServiceException(extractErrorMessage(exception), exception);
         } catch (RestClientException exception) {
+            recordRagCall("POST", "/documents/" + documentId + "/chunks", 0, started, exception.getMessage());
             throw new RagServiceException("RAG service request failed", exception);
         }
+    }
+
+    private void recordRagCall(String method, String path, Integer status, long started, String summary) {
+        requestLogStore.record("OUTBOUND", "RAG Service", method, path, status, elapsedMs(started), summary);
+    }
+
+    private long elapsedMs(long started) {
+        return (System.nanoTime() - started) / 1_000_000;
     }
 
     private boolean isNotFound(HttpStatusCode statusCode) {

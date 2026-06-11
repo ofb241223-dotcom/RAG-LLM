@@ -8,6 +8,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.example.ragllm.config.WebCorsConfiguration;
+import com.example.ragllm.observability.ApiRequestLoggingFilter;
+import com.example.ragllm.observability.RequestLogStore;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -15,7 +17,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.test.web.servlet.MockMvc;
 
 @WebMvcTest(StatusController.class)
-@Import(WebCorsConfiguration.class)
+@Import({WebCorsConfiguration.class, RequestLogStore.class, ApiRequestLoggingFilter.class})
 class StatusControllerTest {
 
     @Autowired

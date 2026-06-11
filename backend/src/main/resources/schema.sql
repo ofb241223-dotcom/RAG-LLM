@@ -46,7 +46,6 @@ CREATE TABLE IF NOT EXISTS chat_sessions (
   document_id BIGINT NOT NULL,
   title VARCHAR(255) NOT NULL,
   status VARCHAR(32) NOT NULL,
-  archived BOOLEAN NOT NULL DEFAULT FALSE,
   created_at TIMESTAMP(6) NOT NULL,
   updated_at TIMESTAMP(6) NOT NULL,
   PRIMARY KEY (id),

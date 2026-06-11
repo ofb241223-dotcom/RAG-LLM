@@ -25,6 +25,7 @@ import xlrd
 
 from rag_service.documents.formats import DOC, DOCX, PDF, TXT, XLS, XLSX, normalize_format
 from rag_service.documents.parser import DocumentParser, ParsedDocument, ParserRegistry
+from rag_service.observability import RequestLogger
 
 
 class DocumentParsingError(ValueError):
@@ -41,6 +42,7 @@ class MinerUPdfParser:
         timeout_seconds: int = 300,
         poll_interval_seconds: float = 2.0,
         session: requests.Session | None = None,
+        request_logger: RequestLogger | None = None,
     ) -> None:
         self.api_token = api_token
         self.base_url = base_url.rstrip("/")
@@ -48,6 +50,7 @@ class MinerUPdfParser:
         self.timeout_seconds = timeout_seconds
         self.poll_interval_seconds = poll_interval_seconds
         self.session = session or requests.Session()
+        self.request_logger = request_logger
 
     def available(self) -> bool:
         return bool(self.api_token and self.api_token.strip())
@@ -87,11 +90,13 @@ class MinerUPdfParser:
             timeout=30,
         )
         self._raise_for_mineru(response)
+        self._log("POST", "/file-urls/batch", _status_code(response), source_name)
         body = response.json()
         data = body["data"]
         upload_url = data["file_urls"][0]
         put_response = self.session.put(upload_url, data=content, timeout=min(self.timeout_seconds, 120))
         put_response.raise_for_status()
+        self._log("PUT", "upload-url", _status_code(put_response), safe_name)
         return str(data["batch_id"])
 
     def _wait_for_zip(self, batch_id: str) -> str:
@@ -105,6 +110,7 @@ class MinerUPdfParser:
                 timeout=30,
             )
             self._raise_for_mineru(response)
+            self._log("GET", "/extract-results/batch", _status_code(response), batch_id)
             body = response.json()
             data = body.get("data") or {}
             results = data.get("extract_result") or data.get("extract_results") or []
@@ -125,6 +131,7 @@ class MinerUPdfParser:
     def _download_markdown(self, zip_url: str) -> str:
         response = self.session.get(zip_url, timeout=60)
         response.raise_for_status()
+        self._log("GET", "result-zip", _status_code(response), "download markdown")
         with zipfile.ZipFile(BytesIO(response.content)) as archive:
             markdown_name = next((name for name in archive.namelist() if name.endswith("full.md")), None)
             if markdown_name is None:
@@ -141,6 +148,17 @@ class MinerUPdfParser:
         if code not in (0, "0", None):
             raise DocumentParsingError(f"MinerU API returned code {code}: {body.get('msg') or body.get('message')}")
 
+    def _log(self, method: str, path: str, status: int, summary: str) -> None:
+        if self.request_logger is not None:
+            self.request_logger({
+                "direction": "PROVIDER",
+                "service": "MinerU",
+                "method": method,
+                "path": path,
+                "status": status,
+                "summary": summary,
+            })
+
 
 def _clean_mineru_markdown(text: str) -> str:
     cleaned = html.unescape(text)
@@ -154,6 +172,11 @@ def _clean_mineru_markdown(text: str) -> str:
     cleaned = re.sub(r"[ \t]{2,}", " ", cleaned)
     cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
     return cleaned.strip()
+
+
+def _status_code(response: object) -> int:
+    value = getattr(response, "status_code", 200)
+    return value if isinstance(value, int) else 200
 
 
 def _parse_with_mineru(
@@ -489,6 +512,7 @@ def create_default_parser_registry(
     mineru_model_version: str = "vlm",
     mineru_timeout_seconds: int = 300,
     mineru_poll_interval_seconds: float = 2.0,
+    request_logger: RequestLogger | None = None,
 ) -> ParserRegistry:
     mineru_parser = None
     if mineru_enabled:
@@ -498,6 +522,7 @@ def create_default_parser_registry(
             model_version=mineru_model_version,
             timeout_seconds=mineru_timeout_seconds,
             poll_interval_seconds=mineru_poll_interval_seconds,
+            request_logger=request_logger,
         )
     return ParserRegistry(
         (

@@ -4,7 +4,7 @@ import type { DocumentDto, DocumentFormat } from '../types/document';
 
 export type ChatRole = 'USER' | 'ASSISTANT';
 export type ChatMessageStatus = 'SUCCESS' | 'PENDING' | 'ERROR';
-export type ChatSessionStatus = 'ACTIVE' | 'ARCHIVED';
+export type ChatSessionStatus = 'ACTIVE';
 
 export interface ChatDocumentDto {
   id: number;
@@ -65,7 +65,6 @@ export interface ChatCreateSessionRequest {
 
 export interface ChatUpdateSessionRequest {
   title?: string;
-  archived?: boolean;
 }
 
 export interface ChatAskMessageRequest {

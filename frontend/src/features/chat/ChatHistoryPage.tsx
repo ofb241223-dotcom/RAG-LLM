@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
-import { Archive, Download, HelpCircle, MessageCircle, MoreHorizontal, Plus, SendHorizontal, Trash2 } from 'lucide-react';
+import { Download, HelpCircle, MessageCircle, MoreHorizontal, Plus, SendHorizontal, Trash2 } from 'lucide-react';
 import {
   chatApi as defaultChatApi,
   type ChatApi,
@@ -33,7 +33,7 @@ export function ChatHistoryPage({ chatApi = defaultChatApi, initialDocumentId }:
   const [creatingSession, setCreatingSession] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [dialog, setDialog] = useState<'help' | 'trash' | 'delete' | 'rename' | null>(null);
+  const [dialog, setDialog] = useState<'help' | 'delete' | 'rename' | null>(null);
   const [renameTitle, setRenameTitle] = useState('');
 
   useEffect(() => {
@@ -181,19 +181,6 @@ export function ChatHistoryPage({ chatApi = defaultChatApi, initialDocumentId }:
     }
   };
 
-  const archiveActiveSession = async () => {
-    if (!activeSession) return;
-    setError(null);
-    try {
-      await chatApi.updateSession(activeSession.id, { archived: true });
-      setSessions((current) => current.filter((session) => session.id !== activeSession.id));
-      setActiveSession(null);
-      setDialog('trash');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '归档对话失败');
-    }
-  };
-
   const renameActiveSession = async () => {
     if (!activeSession || !renameTitle.trim()) return;
     setError(null);
@@ -260,10 +247,6 @@ export function ChatHistoryPage({ chatApi = defaultChatApi, initialDocumentId }:
               </button>
             ))}
           </div>
-          <button className="secondary-button full-width" disabled={!activeSession} type="button" onClick={archiveActiveSession}>
-            <Archive size={17} />
-            回收站
-          </button>
           <div className="document-scope-note">
             <strong>对话记录严格归属于当前文档</strong>
             <p>切换文档后，将仅显示该文档下的对话历史。</p>
@@ -380,10 +363,9 @@ export function ChatHistoryPage({ chatApi = defaultChatApi, initialDocumentId }:
           <section aria-labelledby="chat-dialog-title" aria-modal="true" className="confirm-dialog plain-dialog" role="dialog">
             <div className="confirm-dialog-content">
               <h2 id="chat-dialog-title">
-                {dialog === 'help' ? '使用说明' : dialog === 'trash' ? '回收站' : dialog === 'delete' ? '删除对话' : '重命名对话'}
+                {dialog === 'help' ? '使用说明' : dialog === 'delete' ? '删除对话' : '重命名对话'}
               </h2>
-              {dialog === 'help' ? <p>选择文档后可新建、切换、导出、归档或删除该文档下的对话。</p> : null}
-              {dialog === 'trash' ? <p>当前对话已归档，不再显示在当前文档的对话列表中。</p> : null}
+              {dialog === 'help' ? <p>选择文档后可新建、切换、导出或删除该文档下的对话。</p> : null}
               {dialog === 'delete' ? <p>确认删除当前对话“{activeSession?.title}”吗？删除后无法从列表恢复。</p> : null}
               {dialog === 'rename' ? (
                 <label className="dialog-field">
@@ -394,7 +376,7 @@ export function ChatHistoryPage({ chatApi = defaultChatApi, initialDocumentId }:
             </div>
             <div className="dialog-actions">
               <button className="secondary-button" type="button" onClick={() => setDialog(null)}>
-                {dialog === 'help' || dialog === 'trash' ? '关闭' : '取消'}
+                {dialog === 'help' ? '关闭' : '取消'}
               </button>
               {dialog === 'delete' ? (
                 <button className="danger-button" type="button" onClick={() => void deleteActiveSession()}>

@@ -19,7 +19,6 @@ public class JdbcChatRepository {
             rs.getLong("document_id"),
             rs.getString("title"),
             ChatSessionStatus.valueOf(rs.getString("status")),
-            rs.getBoolean("archived"),
             instant(rs.getTimestamp("created_at")),
             instant(rs.getTimestamp("updated_at"))
     );
@@ -52,7 +51,7 @@ public class JdbcChatRepository {
 
     public long countSessionsByDocument(Long documentId) {
         Long count = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM chat_sessions WHERE document_id = ? AND archived = FALSE",
+                "SELECT COUNT(*) FROM chat_sessions WHERE document_id = ?",
                 Long.class,
                 documentId
         );
@@ -61,7 +60,7 @@ public class JdbcChatRepository {
 
     public Instant lastActiveAtByDocument(Long documentId) {
         Timestamp timestamp = jdbcTemplate.queryForObject(
-                "SELECT MAX(updated_at) FROM chat_sessions WHERE document_id = ? AND archived = FALSE",
+                "SELECT MAX(updated_at) FROM chat_sessions WHERE document_id = ?",
                 Timestamp.class,
                 documentId
         );
@@ -72,8 +71,8 @@ public class JdbcChatRepository {
         KeyHolder keyHolder = new GeneratedKeyHolder();
         jdbcTemplate.update(connection -> {
             PreparedStatement statement = connection.prepareStatement("""
-                    INSERT INTO chat_sessions (document_id, title, status, archived, created_at, updated_at)
-                    VALUES (?, ?, ?, FALSE, ?, ?)
+                    INSERT INTO chat_sessions (document_id, title, status, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?)
                     """, Statement.RETURN_GENERATED_KEYS);
             statement.setLong(1, documentId);
             statement.setString(2, title);
@@ -94,7 +93,7 @@ public class JdbcChatRepository {
     public List<ChatSessionRecord> listSessions(Long documentId) {
         return jdbcTemplate.query("""
                 SELECT * FROM chat_sessions
-                WHERE document_id = ? AND archived = FALSE
+                WHERE document_id = ?
                 ORDER BY updated_at DESC, id DESC
                 """, SESSION_MAPPER, documentId);
     }
@@ -108,12 +107,12 @@ public class JdbcChatRepository {
         return count == null ? 0 : count;
     }
 
-    public void updateSession(Long id, String title, ChatSessionStatus status, boolean archived, Instant now) {
+    public void updateSession(Long id, String title, ChatSessionStatus status, Instant now) {
         jdbcTemplate.update("""
                 UPDATE chat_sessions
-                SET title = ?, status = ?, archived = ?, updated_at = ?
+                SET title = ?, status = ?, updated_at = ?
                 WHERE id = ?
-                """, title, status.name(), archived, timestamp(now), id);
+                """, title, status.name(), timestamp(now), id);
     }
 
     public void touchSession(Long id, Instant now) {

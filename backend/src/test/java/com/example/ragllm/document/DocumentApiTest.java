@@ -232,6 +232,16 @@ class DocumentApiTest {
     }
 
     @Test
+    void documentProcessingRecordsOutboundRagRequestLog() throws Exception {
+        upload("observed.txt", "content");
+
+        mockMvc.perform(get("/api/observability/requests")
+                        .param("limit", "20"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[?(@.direction == 'OUTBOUND' && @.path == '/documents/ingest/events')]").isNotEmpty());
+    }
+
+    @Test
     void listsDocumentsWithPaginationAndStatusFilter() throws Exception {
         upload("first.txt", "one");
         upload("second.docx", "two");
@@ -643,6 +653,32 @@ class DocumentApiTest {
                         .param("documentId", "1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", hasSize(0)));
+    }
+
+    @Test
+    void chatSessionUpdateDoesNotArchiveConversations() throws Exception {
+        upload("chapter.pdf", "chapter content");
+        mockMvc.perform(post("/api/chat/sessions")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"documentId":1,"title":"新对话"}
+                                """))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(patch("/api/chat/sessions/1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"archived":true}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(1))
+                .andExpect(jsonPath("$.title").value("新对话"));
+
+        mockMvc.perform(get("/api/chat/sessions")
+                        .param("documentId", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(1)))
+                .andExpect(jsonPath("$[0].id").value(1));
     }
 
     @Test

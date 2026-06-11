@@ -1,6 +1,8 @@
 import json
+import time
 from pathlib import Path
 
+from fastapi import Request
 from fastapi import Body, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import ValidationError
@@ -34,6 +36,7 @@ from rag_service.schemas import (
     RuntimeConfigRequest,
 )
 from rag_service.service import DocumentPayload, EmptyDocumentError, RagService
+from rag_service.observability import RequestLogStore, elapsed_ms
 from rag_service.vector_store import COLLECTION_NAME, ChromaVectorStore
 
 
@@ -50,8 +53,38 @@ def create_app(
         settings = settings.model_copy(update={"chroma_persist_dir": Path(chroma_persist_dir)})
 
     app.state.settings = settings
-    app.state.embedding_provider = embedding_provider or create_embedding_provider(settings)
-    app.state.llm_provider = llm_provider or create_llm_provider(settings)
+    app.state.request_log_store = RequestLogStore()
+
+    @app.middleware("http")
+    async def request_logging_middleware(request: Request, call_next):
+        if not should_log_request(request):
+            return await call_next(request)
+        started = time.perf_counter()
+        response = await call_next(request)
+        app.state.request_log_store.record(
+            direction="INBOUND",
+            service="RAG Service",
+            method=request.method,
+            path=request.url.path,
+            status=response.status_code,
+            duration_ms=elapsed_ms(started),
+            summary=request.headers.get("content-type", ""),
+        )
+        return response
+
+    def record_provider_event(event: dict[str, object]) -> None:
+        app.state.request_log_store.record(
+            direction=str(event.get("direction", "PROVIDER")),
+            service=str(event.get("service", "")),
+            method=str(event.get("method", "")),
+            path=str(event.get("path", "")),
+            status=event.get("status") if isinstance(event.get("status"), int) else None,
+            duration_ms=event.get("duration_ms") if isinstance(event.get("duration_ms"), int) else 0,
+            summary=str(event.get("summary", "")),
+        )
+
+    app.state.embedding_provider = embedding_provider or create_embedding_provider(settings, request_logger=record_provider_event)
+    app.state.llm_provider = llm_provider or create_llm_provider(settings, request_logger=record_provider_event)
 
     def create_parser_registry() -> object:
         current_settings = app.state.settings
@@ -62,6 +95,7 @@ def create_app(
             mineru_model_version=current_settings.mineru_model_version,
             mineru_timeout_seconds=current_settings.mineru_timeout_seconds,
             mineru_poll_interval_seconds=current_settings.mineru_poll_interval_seconds,
+            request_logger=record_provider_event,
         )
 
     def get_vector_store(runtime_config: RuntimeModelConfig | None = None) -> ChromaVectorStore:
@@ -80,8 +114,8 @@ def create_app(
         if runtime_config is not None:
             return RagService(
                 parser_registry=create_parser_registry(),
-                embedding_provider=create_embedding_provider(app.state.settings, runtime_config),
-                llm_provider=create_llm_provider(app.state.settings, runtime_config),
+                embedding_provider=create_embedding_provider(app.state.settings, runtime_config, record_provider_event),
+                llm_provider=create_llm_provider(app.state.settings, runtime_config, record_provider_event),
                 vector_store=get_vector_store(runtime_config),
                 chunk_size=runtime_config.chunk_size,
                 chunk_overlap=runtime_config.chunk_overlap,
@@ -99,6 +133,14 @@ def create_app(
     @app.get("/health")
     def health() -> dict[str, str]:
         return {"status": "ok"}
+
+    @app.get("/observability/requests")
+    def recent_requests(limit: int = 100) -> list[dict[str, object]]:
+        return app.state.request_log_store.recent(limit)
+
+    @app.delete("/observability/requests")
+    def clear_requests() -> None:
+        app.state.request_log_store.clear()
 
     @app.get("/status")
     def status() -> dict[str, object]:
@@ -192,8 +234,8 @@ def create_app(
     def test_provider(request: ProviderTestRequest) -> ProviderTestResponse:
         kind = request.kind.strip().lower()
         runtime_config = request.runtime_config
-        embedding = create_embedding_provider(app.state.settings, runtime_config)
-        llm = create_llm_provider(app.state.settings, runtime_config)
+        embedding = create_embedding_provider(app.state.settings, runtime_config, record_provider_event)
+        llm = create_llm_provider(app.state.settings, runtime_config, record_provider_event)
         if kind == "status":
             return ProviderTestResponse(
                 kind=kind,
@@ -239,9 +281,14 @@ def parse_runtime_config(raw: str | None) -> RuntimeModelConfig | None:
         raise HTTPException(status_code=400, detail="Invalid runtime_config payload.") from error
 
 
+def should_log_request(request: Request) -> bool:
+    return request.url.path != "/observability/requests"
+
+
 def create_embedding_provider(
     settings: Settings,
     runtime_config: RuntimeModelConfig | None = None,
+    request_logger=None,
 ) -> EmbeddingProvider:
     provider = (runtime_config.embedding_provider if runtime_config is not None else settings.model_provider).strip().lower()
     if provider == "google":
@@ -251,18 +298,21 @@ def create_embedding_provider(
             or settings.gemini_api_key,
             model=runtime_config.embedding_model if runtime_config is not None else settings.google_embedding_model,
             batch_size=runtime_config.embedding_batch_size if runtime_config is not None else 10,
+            request_logger=request_logger,
         )
     if provider == "openrouter":
         return OpenRouterEmbeddingProvider(
             api_key=(runtime_config.embedding_api_key if runtime_config is not None else None) or settings.openrouter_api_key,
             model=runtime_config.embedding_model if runtime_config is not None else settings.openrouter_embedding_model,
             batch_size=runtime_config.embedding_batch_size if runtime_config is not None else 10,
+            request_logger=request_logger,
         )
     if provider in {"legacy", "openai-compatible", "dashscope"}:
         return OpenAICompatibleEmbeddingProvider(
             api_key=(runtime_config.embedding_api_key if runtime_config is not None else None) or settings.dashscope_api_key,
             model=runtime_config.embedding_model if runtime_config is not None else settings.dashscope_embedding_model,
             batch_size=runtime_config.embedding_batch_size if runtime_config is not None else 10,
+            request_logger=request_logger,
         )
     raise ValueError(f"Unsupported embedding provider: {provider}")
 
@@ -270,6 +320,7 @@ def create_embedding_provider(
 def create_llm_provider(
     settings: Settings,
     runtime_config: RuntimeModelConfig | None = None,
+    request_logger=None,
 ) -> LlmProvider:
     provider = (runtime_config.llm_provider if runtime_config is not None else settings.model_provider).strip().lower()
     if provider == "google":
@@ -282,6 +333,7 @@ def create_llm_provider(
             max_tokens=runtime_config.max_tokens if runtime_config is not None else None,
             top_p=runtime_config.top_p if runtime_config is not None else None,
             system_prompt=runtime_config.system_prompt if runtime_config is not None else None,
+            request_logger=request_logger,
         )
     if provider == "openrouter":
         return OpenRouterLlmProvider(
@@ -292,6 +344,7 @@ def create_llm_provider(
             top_p=runtime_config.top_p if runtime_config is not None else None,
             frequency_penalty=runtime_config.frequency_penalty if runtime_config is not None else None,
             system_prompt=runtime_config.system_prompt if runtime_config is not None else None,
+            request_logger=request_logger,
         )
     if provider in {"legacy", "openai-compatible", "deepseek"}:
         return OpenAICompatibleLlmProvider(
@@ -302,6 +355,7 @@ def create_llm_provider(
             top_p=runtime_config.top_p if runtime_config is not None else None,
             frequency_penalty=runtime_config.frequency_penalty if runtime_config is not None else None,
             system_prompt=runtime_config.system_prompt if runtime_config is not None else None,
+            request_logger=request_logger,
         )
     raise ValueError(f"Unsupported LLM provider: {provider}")
 
