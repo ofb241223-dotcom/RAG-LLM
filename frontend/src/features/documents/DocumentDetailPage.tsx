@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
+import ReactMarkdown from 'react-markdown';
+import rehypeKatex from 'rehype-katex';
 import {
   ArrowLeft,
   Box,
@@ -14,6 +16,8 @@ import {
   Sigma,
   type LucideIcon,
 } from 'lucide-react';
+import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
 import { documentsApi as defaultDocumentsApi, type DocumentsApi } from '../../api/documents';
 import { settingsApi as defaultSettingsApi, type SettingsResponse } from '../../api/settings';
 import type { DocumentChunkDto, DocumentDto, DocumentProcessingStepDto } from '../../types/document';
@@ -225,6 +229,16 @@ function buildKeywords(document: DocumentDto, chunks: PreviewChunk[]): string[] 
     .map((word) => word.trim())
     .filter((word) => word.length >= 2 && !['PDF', 'TXT', 'DOCX', 'DOC', 'XLSX', 'XLS'].includes(word.toUpperCase()));
   return Array.from(new Set(words)).slice(0, 5);
+}
+
+function ChunkMarkdown({ text }: { text: string }) {
+  return (
+    <div className="chunk-markdown markdown-body">
+      <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
+        {text}
+      </ReactMarkdown>
+    </div>
+  );
 }
 
 export function DocumentDetailPage({
@@ -660,7 +674,7 @@ export function DocumentDetailPage({
                 {detail.chunks.map((chunk) => (
                   <article key={chunk.id}>
                     <strong>{chunk.id}</strong>
-                    <span>{chunk.text}</span>
+                    <ChunkMarkdown text={chunk.text} />
                     <small>
                       {chunk.characters.toLocaleString('zh-CN')} 字符 · {chunk.tokens} tokens · 重叠 {chunk.overlap}
                     </small>

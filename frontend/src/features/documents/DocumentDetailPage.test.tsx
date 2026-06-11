@@ -125,6 +125,44 @@ describe('DocumentDetailPage', () => {
     expect(screen.getByText('向量已成功存储并建立索引，可用于检索和问答')).toBeInTheDocument();
   });
 
+  it('renders all chunk previews with Markdown and LaTeX formatting', async () => {
+    const documentsApi: Pick<DocumentsApi, 'get' | 'chunks' | 'processing' | 'reprocess' | 'downloadUrl'> = {
+      get: vi.fn(async () => readyDocument),
+      chunks: vi.fn(async () => [
+        {
+          document_id: '101',
+          chunk_id: '101-0',
+          source_name: '《深度学习原理与实践》第3章.pdf',
+          format: 'PDF',
+          chunk_index: 0,
+          text: '## 研究背景\n\n公式 $E=mc^2$\n\n- 第一条',
+          page: 3,
+        },
+      ]),
+      processing: vi.fn(async () => readySteps),
+      reprocess: vi.fn(async () => readyDocument),
+      downloadUrl: vi.fn((id) => `/api/documents/${id}/download`),
+    };
+
+    render(
+      <DocumentDetailPage
+        documentId={101}
+        documentsApi={documentsApi}
+        settingsApi={{ get: vi.fn(async () => settings) }}
+        onAskDocument={() => undefined}
+        onBack={() => undefined}
+      />,
+    );
+
+    await waitFor(() => expect(documentsApi.get).toHaveBeenCalledWith(101));
+    fireEvent.click(screen.getByRole('button', { name: /查看全部 1 个文本块/ }));
+
+    const dialog = screen.getByRole('dialog', { name: '文本块预览' });
+    expect(within(dialog).getByRole('heading', { level: 2, name: '研究背景' })).toBeInTheDocument();
+    expect(within(dialog).getByText('第一条')).toBeInTheDocument();
+    expect(dialog.querySelector('.katex')).not.toBeNull();
+  });
+
   it('shows the OpenRouter text-embedding-3-small vector dimension accurately', async () => {
     const openRouterSettings: SettingsResponse = {
       ...settings,

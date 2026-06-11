@@ -1997,6 +1997,38 @@ button {
   line-height: 1.65;
 }
 
+.detail-chunk-dialog-list .chunk-markdown {
+  color: #17203a;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.65;
+}
+
+.detail-chunk-dialog-list .chunk-markdown p {
+  margin: 0 0 8px;
+  white-space: pre-wrap;
+}
+
+.detail-chunk-dialog-list .chunk-markdown h1,
+.detail-chunk-dialog-list .chunk-markdown h2,
+.detail-chunk-dialog-list .chunk-markdown h3,
+.detail-chunk-dialog-list .chunk-markdown h4 {
+  margin: 6px 0 8px;
+  color: #17203a;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.detail-chunk-dialog-list .chunk-markdown ul,
+.detail-chunk-dialog-list .chunk-markdown ol {
+  margin: 0 0 8px;
+  padding-left: 22px;
+}
+
+.detail-chunk-dialog-list .chunk-markdown .katex {
+  font-size: 1em;
+}
+
 .detail-chunk-dialog-list small {
   color: #70809c;
   font-size: 12px;
