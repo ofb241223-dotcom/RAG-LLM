@@ -31,11 +31,13 @@ RAG-LLM/
 ├── frontend/           # React 前端
 ├── backend/            # Spring Boot 后端 API
 ├── rag-service/        # Python FastAPI RAG 服务
-├── scripts/            # 本地启动脚本
+├── scripts/            # 可选的本地启动脚本
 ├── docs/ui-reference/  # UI 参考图
 ├── .env.example        # 环境变量模板，不包含真实密钥
 └── README.md
 ```
+
+说明：`backend/src/test`、`frontend/src/**/*.test.tsx`、`rag-service/tests` 是项目测试代码，用来证明接口、页面和 RAG 流程可以被自动验证，不是无关文件。`scripts/dev-stack.sh` 是可选启动脚本，方便本机开发和演示；不使用脚本也可以按下面的手动命令分别启动三个服务。
 
 ## 环境要求
 
@@ -179,27 +181,42 @@ H2 模式只适合临时演示，数据不会长期保留。
 
 ## 手动启动方式
 
-不使用脚本时，需要分别启动三个服务。
+不使用 `./scripts/dev-stack.sh start-all` 时，需要分别打开三个终端启动服务。推荐启动顺序是：RAG 服务 -> Spring Boot 后端 -> React 前端。
 
-启动 RAG 服务：
+终端 1，启动 RAG 服务：
 
 ```bash
 cd rag-service
 .venv/bin/uvicorn rag_service.main:app --host 0.0.0.0 --port 8000
 ```
 
-启动后端：
+终端 2，启动后端：
 
 ```bash
 cd backend
-RAG_SERVICE_URL=http://127.0.0.1:8000 mvn spring-boot:run -Dspring-boot.run.arguments='--server.port=8080'
+export RAG_SERVICE_URL=http://127.0.0.1:8000
+mvn spring-boot:run -Dspring-boot.run.arguments='--server.port=8080'
 ```
 
-启动前端：
+终端 3，启动前端：
 
 ```bash
 cd frontend
 VITE_API_BASE_URL=http://127.0.0.1:8080/api npm run dev -- --host 0.0.0.0 --port 5176
+```
+
+手动重启时，在对应终端按 `Ctrl+C` 停止，再重新执行该服务的启动命令即可。如果想检查端口是否已经被占用：
+
+```bash
+lsof -i :5176
+lsof -i :8080
+lsof -i :8000
+```
+
+如果需要停止某个端口上的旧进程，可以先用 `lsof` 找到 PID，再执行：
+
+```bash
+kill <PID>
 ```
 
 ## 使用流程
