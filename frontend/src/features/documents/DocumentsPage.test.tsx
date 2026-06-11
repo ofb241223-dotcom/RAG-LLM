@@ -86,7 +86,10 @@ describe('DocumentsPage', () => {
 
     fireEvent.change(screen.getByLabelText('文件类型'), { target: { value: 'PDF' } });
     fireEvent.change(screen.getByLabelText('解析状态'), { target: { value: 'READY' } });
-    fireEvent.change(screen.getByLabelText('来源'), { target: { value: 'LOCAL_IMPORT' } });
+    expect(screen.getByRole('option', { name: '需重新处理' })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: '本地导入' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: 'API导入' })).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('来源'), { target: { value: 'MANUAL_UPLOAD' } });
     fireEvent.change(screen.getByLabelText('开始日期'), { target: { value: '2026-06-01' } });
     fireEvent.change(screen.getByLabelText('结束日期'), { target: { value: '2026-06-10' } });
     fireEvent.change(screen.getByLabelText('关键词'), { target: { value: '向量 检索' } });
@@ -97,7 +100,7 @@ describe('DocumentsPage', () => {
         size: 10,
         format: 'PDF',
         status: 'READY',
-        source: 'LOCAL_IMPORT',
+        source: 'MANUAL_UPLOAD',
         startDate: '2026-06-01',
         endDate: '2026-06-10',
         keyword: '向量 检索',

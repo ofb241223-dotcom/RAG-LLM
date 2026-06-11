@@ -19,6 +19,8 @@ import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.sql.Timestamp;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -225,6 +227,34 @@ class DocumentApiTest {
     }
 
     @Test
+    void filtersDocumentDatesUsingShanghaiCalendarDays() throws Exception {
+        upload("late-night.txt", "one");
+        jdbcTemplate.update(
+                "UPDATE documents SET uploaded_at = ?, updated_at = ? WHERE id = 1",
+                Timestamp.from(Instant.parse("2026-06-10T19:47:00Z")),
+                Timestamp.from(Instant.parse("2026-06-10T19:48:00Z"))
+        );
+
+        mockMvc.perform(get("/api/documents")
+                        .param("startDate", "2026-06-10")
+                        .param("endDate", "2026-06-10")
+                        .param("page", "0")
+                        .param("size", "10"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items", hasSize(0)))
+                .andExpect(jsonPath("$.total").value(0));
+
+        mockMvc.perform(get("/api/documents")
+                        .param("startDate", "2026-06-11")
+                        .param("endDate", "2026-06-11")
+                        .param("page", "0")
+                        .param("size", "10"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items", hasSize(1)))
+                .andExpect(jsonPath("$.items[0].originalFilename").value("late-night.txt"));
+    }
+
+    @Test
     void returnsDocumentCenterStats() throws Exception {
         upload("ready.pdf", "one");
         ragServer.failNextIngest();
@@ -319,6 +349,22 @@ class DocumentApiTest {
         mockMvc.perform(get("/api/documents/1"))
                 .andExpect(status().isNotFound());
         assertThat(ragServer.deletedDocumentIds()).containsExactly("1");
+    }
+
+    @Test
+    void deletesFailedDocumentWithoutCallingRagWhenNoRagDocumentIdExists() throws Exception {
+        ragServer.failNextIngest();
+        upload("failed-delete.txt", "content");
+        Path storedFile = Path.of("target/test-uploads/1-failed-delete.txt");
+        assertThat(Files.exists(storedFile)).isTrue();
+
+        mockMvc.perform(delete("/api/documents/1"))
+                .andExpect(status().isNoContent());
+
+        mockMvc.perform(get("/api/documents/1"))
+                .andExpect(status().isNotFound());
+        assertThat(Files.exists(storedFile)).isFalse();
+        assertThat(ragServer.deletedDocumentIds()).isEmpty();
     }
 
     @Test

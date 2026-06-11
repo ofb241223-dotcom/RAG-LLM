@@ -291,6 +291,7 @@ export function DocumentsPage({ documentsApi = defaultDocumentsApi, onNavigate, 
             <option value="UPLOADED">已上传</option>
             <option value="PARSING">解析中</option>
             <option value="EMBEDDING">向量化</option>
+            <option value="REPROCESS_REQUIRED">需重新处理</option>
             <option value="READY">已完成</option>
             <option value="FAILED">失败</option>
           </select>
@@ -300,8 +301,6 @@ export function DocumentsPage({ documentsApi = defaultDocumentsApi, onNavigate, 
           <select value={filters.source} onChange={(event) => updateFilter('source', event.target.value as FilterState['source'])}>
             <option value="">全部来源</option>
             <option value="MANUAL_UPLOAD">手动上传</option>
-            <option value="LOCAL_IMPORT">本地导入</option>
-            <option value="API_IMPORT">API导入</option>
           </select>
         </label>
         <label>

@@ -5,7 +5,7 @@ import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.time.ZoneOffset;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -20,6 +20,7 @@ import org.springframework.web.multipart.MultipartFile;
 public class DocumentService {
     private static final int DEFAULT_PAGE_SIZE = 20;
     private static final int MAX_PAGE_SIZE = 100;
+    private static final ZoneId DOCUMENT_DATE_ZONE = ZoneId.of("Asia/Shanghai");
 
     private final DocumentRepository repository;
     private final FileDocumentStorage storage;
@@ -222,10 +223,10 @@ public class DocumentService {
         }
         Instant startInclusive = startDate == null
                 ? Instant.MIN
-                : startDate.atStartOfDay(ZoneOffset.UTC).toInstant();
+                : startDate.atStartOfDay(DOCUMENT_DATE_ZONE).toInstant();
         Instant endExclusive = endDate == null
                 ? Instant.MAX
-                : endDate.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant();
+                : endDate.plusDays(1).atStartOfDay(DOCUMENT_DATE_ZONE).toInstant();
         return !uploadedAt.isBefore(startInclusive) && uploadedAt.isBefore(endExclusive);
     }
 
@@ -240,7 +241,7 @@ public class DocumentService {
     private void deleteRagDocument(DocumentRecord record) {
         String documentId = StringUtils.hasText(record.ragDocumentId())
                 ? record.ragDocumentId()
-                : record.id() == null ? null : String.valueOf(record.id());
+                : hasIndexedContent(record) && record.id() != null ? String.valueOf(record.id()) : null;
         if (!StringUtils.hasText(documentId)) {
             return;
         }
@@ -250,6 +251,11 @@ public class DocumentService {
         } catch (RagServiceException exception) {
             throw ApiException.badGateway("RAG service delete failed: " + exception.getMessage());
         }
+    }
+
+    private boolean hasIndexedContent(DocumentRecord record) {
+        return (record.chunkCount() != null && record.chunkCount() > 0)
+                || (record.vectorCount() != null && record.vectorCount() > 0);
     }
 
     private void validateUpload(MultipartFile file) {
