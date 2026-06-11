@@ -1,4 +1,4 @@
-import { ChevronRight, FileText, History, Home, MessageCircle, Search, Settings, UploadCloud } from 'lucide-react';
+import { ChevronRight, FileText, History, Home, MessageCircle, Settings, UploadCloud } from 'lucide-react';
 import { useState } from 'react';
 import { images } from './assets/images';
 import { DashboardPage } from './features/dashboard/DashboardPage';
@@ -101,14 +101,9 @@ function App() {
 
       <main className="workspace">
         <header className="topbar">
-          <label className="search-box">
-            <Search size={22} />
-            <input placeholder="搜索文档、对话或关键词..." />
-            <span className="shortcut">⌘ K</span>
-          </label>
           <div className="user-chip">
             <img src={images.userAvatar} alt="" />
-            <span>张同学</span>
+            <span>科大人</span>
             <ChevronRight size={16} />
           </div>
         </header>

@@ -102,6 +102,7 @@ def test_google_llm_provider_generates_grounded_answer_request() -> None:
     assert fake_client.models.generate_calls[0]["model"] == "gemini-3.1-flash-lite"
     request_text = fake_client.models.generate_calls[0]["contents"]
     assert "只能依据给定引用片段回答" in request_text
+    assert "每个关键结论、名单项、判断句后都要标注引用编号" in request_text
     assert "Transformer 的核心组件有哪些？" in request_text
     assert "[1] 来源：自然语言处理综述.docx" in request_text
     assert "多头注意力是核心组件。" in request_text
@@ -172,4 +173,6 @@ def test_openrouter_llm_provider_uses_openai_compatible_chat() -> None:
     assert call["model"] == "openai/gpt-oss-120b:free"
     assert call["temperature"] == 0.2
     assert "只能依据给定引用片段回答" in call["messages"][0]["content"]
+    assert "每个关键结论、名单项、判断句后都要标注引用编号" in call["messages"][1]["content"]
+    assert "[1] 来源：doc.txt" in call["messages"][1]["content"]
     assert "片段内容" in call["messages"][1]["content"]

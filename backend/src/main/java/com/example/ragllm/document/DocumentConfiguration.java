@@ -3,6 +3,8 @@ package com.example.ragllm.document;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -19,6 +21,21 @@ public class DocumentConfiguration {
     }
 
     @Bean
+    DocumentActivityRepository documentActivityRepository(JdbcTemplate jdbcTemplate) {
+        return new JdbcDocumentActivityRepository(jdbcTemplate);
+    }
+
+    @Bean
+    DocumentProcessingStepRepository documentProcessingStepRepository(JdbcTemplate jdbcTemplate) {
+        return new JdbcDocumentProcessingStepRepository(jdbcTemplate);
+    }
+
+    @Bean
+    Executor documentProcessingExecutor() {
+        return Executors.newFixedThreadPool(3);
+    }
+
+    @Bean
     FileDocumentStorage fileDocumentStorage(
             @Value("${rag.storage.upload-dir:${UPLOAD_STORAGE_DIR:../uploads}}") String uploadDir
     ) {
@@ -27,11 +44,13 @@ public class DocumentConfiguration {
 
     @Bean
     RagServiceClient ragServiceClient(
-            @Value("${rag.service.base-url:${RAG_SERVICE_URL:http://localhost:8000}}") String baseUrl
+            @Value("${rag.service.base-url:${RAG_SERVICE_URL:http://localhost:8000}}") String baseUrl,
+            @Value("${rag.service.connect-timeout-seconds:${RAG_SERVICE_CONNECT_TIMEOUT_SECONDS:3}}") long connectTimeoutSeconds,
+            @Value("${rag.service.read-timeout-seconds:${RAG_SERVICE_READ_TIMEOUT_SECONDS:180}}") long readTimeoutSeconds
     ) {
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
-        requestFactory.setConnectTimeout(Duration.ofSeconds(3));
-        requestFactory.setReadTimeout(Duration.ofSeconds(30));
+        requestFactory.setConnectTimeout(Duration.ofSeconds(connectTimeoutSeconds));
+        requestFactory.setReadTimeout(Duration.ofSeconds(readTimeoutSeconds));
 
         RestClient restClient = RestClient.builder()
                 .baseUrl(stripTrailingSlash(baseUrl))

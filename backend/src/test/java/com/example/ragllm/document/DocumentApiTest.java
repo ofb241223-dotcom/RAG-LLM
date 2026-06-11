@@ -26,6 +26,7 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -72,9 +73,13 @@ class DocumentApiTest {
         jdbcTemplate.update("DELETE FROM chat_citations");
         jdbcTemplate.update("DELETE FROM chat_messages");
         jdbcTemplate.update("DELETE FROM chat_sessions");
+        jdbcTemplate.update("DELETE FROM document_processing_steps");
+        jdbcTemplate.update("DELETE FROM document_activity_events");
         jdbcTemplate.update("DELETE FROM documents");
         jdbcTemplate.update("DELETE FROM system_settings");
         jdbcTemplate.execute("ALTER TABLE documents ALTER COLUMN id RESTART WITH 1");
+        jdbcTemplate.execute("ALTER TABLE document_processing_steps ALTER COLUMN id RESTART WITH 1");
+        jdbcTemplate.execute("ALTER TABLE document_activity_events ALTER COLUMN id RESTART WITH 1");
         jdbcTemplate.execute("ALTER TABLE chat_sessions ALTER COLUMN id RESTART WITH 1");
         jdbcTemplate.execute("ALTER TABLE chat_messages ALTER COLUMN id RESTART WITH 1");
         jdbcTemplate.execute("ALTER TABLE chat_citations ALTER COLUMN id RESTART WITH 1");
@@ -95,7 +100,7 @@ class DocumentApiTest {
     }
 
     @Test
-    void uploadsSupportedDocumentAndReturnsReadyMetadata() throws Exception {
+    void uploadStartsAsynchronousProcessingAndExposesRealProcessingSteps() throws Exception {
         MockMultipartFile file = new MockMultipartFile(
                 "file",
                 "chapter.pdf",
@@ -108,18 +113,73 @@ class DocumentApiTest {
                 .andExpect(jsonPath("$.id").isNumber())
                 .andExpect(jsonPath("$.originalFilename").value("chapter.pdf"))
                 .andExpect(jsonPath("$.format").value("PDF"))
-                .andExpect(jsonPath("$.status").value("READY"))
+                .andExpect(jsonPath("$.status").value("PARSING"))
                 .andExpect(jsonPath("$.source").value("MANUAL_UPLOAD"))
-                .andExpect(jsonPath("$.sizeBytes").value(8))
-                .andExpect(jsonPath("$.chunkCount").value(3))
-                .andExpect(jsonPath("$.vectorCount").value(3));
+                .andExpect(jsonPath("$.sizeBytes").value(8));
+
+        awaitStatus(1, DocumentProcessingStatus.READY);
 
         assertThat(ragServer.lastIngestContentType()).startsWith("multipart/form-data");
         assertThat(ragServer.lastIngestBody()).contains("name=\"document_id\"");
         assertThat(ragServer.lastIngestBody()).contains("name=\"runtime_config\"");
         assertThat(ragServer.lastIngestBody()).contains("gemini-embedding-001");
+        assertThat(ragServer.lastIngestBody()).contains("rag_documents_v1__google_gemini-embedding-001");
         assertThat(ragServer.lastIngestBody()).contains("name=\"file\"");
         assertThat(ragServer.lastIngestBody()).contains("filename=\"chapter.pdf\"");
+
+        mockMvc.perform(get("/api/documents/1/processing"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(6)))
+                .andExpect(jsonPath("$[0].key").value("upload"))
+                .andExpect(jsonPath("$[0].state").value("COMPLETE"))
+                .andExpect(jsonPath("$[1].key").value("extract"))
+                .andExpect(jsonPath("$[1].detail").value("已提取 897 个字符"))
+                .andExpect(jsonPath("$[2].key").value("split"))
+                .andExpect(jsonPath("$[2].detail").value("已生成 3 个文本块"))
+                .andExpect(jsonPath("$[3].key").value("vector"))
+                .andExpect(jsonPath("$[3].detail").value("已生成 3 个向量"))
+                .andExpect(jsonPath("$[4].key").value("index"))
+                .andExpect(jsonPath("$[4].state").value("COMPLETE"))
+                .andExpect(jsonPath("$[5].key").value("stored"))
+                .andExpect(jsonPath("$[5].state").value("COMPLETE"));
+    }
+
+    @Test
+    void uploadsExcelWorkbookAndForwardsItToRagService() throws Exception {
+        MockMultipartFile file = new MockMultipartFile(
+                "file",
+                "score-table.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                "xlsx content".getBytes(StandardCharsets.UTF_8)
+        );
+
+        mockMvc.perform(multipart("/api/documents").file(file))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.originalFilename").value("score-table.xlsx"))
+                .andExpect(jsonPath("$.format").value("XLSX"))
+                .andExpect(jsonPath("$.status").value("PARSING"));
+
+        awaitStatus(1, DocumentProcessingStatus.READY);
+
+        assertThat(ragServer.lastIngestBody()).contains("filename=\"score-table.xlsx\"");
+    }
+
+    @Test
+    void uploadsDocumentLargerThanSpringDefaultLimit() throws Exception {
+        byte[] content = new byte[2 * 1024 * 1024];
+        MockMultipartFile file = new MockMultipartFile(
+                "file",
+                "larger-than-default.pdf",
+                "application/pdf",
+                content
+        );
+
+        mockMvc.perform(multipart("/api/documents").file(file))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.originalFilename").value("larger-than-default.pdf"))
+                .andExpect(jsonPath("$.status").value("PARSING"));
+
+        awaitStatus(1, DocumentProcessingStatus.READY);
     }
 
     @Test
@@ -162,6 +222,11 @@ class DocumentApiTest {
 
         mockMvc.perform(multipart("/api/documents").file(file))
                 .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.status").value("PARSING"));
+
+        awaitStatus(1, DocumentProcessingStatus.FAILED);
+        mockMvc.perform(get("/api/documents/1"))
+                .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("FAILED"))
                 .andExpect(jsonPath("$.errorMessage", containsString("rag unavailable")));
     }
@@ -187,7 +252,7 @@ class DocumentApiTest {
         upload("Alpha Guide.PDF", "one");
         upload("beta-notes.txt", "two");
         ragServer.failNextIngest();
-        upload("alpha-draft.docx", "three");
+        upload("alpha-draft.docx", "three", DocumentProcessingStatus.FAILED);
 
         mockMvc.perform(get("/api/documents")
                         .param("format", "PDF")
@@ -258,7 +323,7 @@ class DocumentApiTest {
     void returnsDocumentCenterStats() throws Exception {
         upload("ready.pdf", "one");
         ragServer.failNextIngest();
-        upload("failed.txt", "two");
+        upload("failed.txt", "two", DocumentProcessingStatus.FAILED);
 
         mockMvc.perform(get("/api/documents/stats"))
                 .andExpect(status().isOk())
@@ -266,6 +331,19 @@ class DocumentApiTest {
                 .andExpect(jsonPath("$.readyDocuments").value(1))
                 .andExpect(jsonPath("$.successRate").value(50.0))
                 .andExpect(jsonPath("$.vectorCount").value(3));
+    }
+
+    @Test
+    void excludesReprocessRequiredDocumentsFromUsableVectorStats() throws Exception {
+        upload("ready.pdf", "one");
+        jdbcTemplate.update("UPDATE documents SET status = 'REPROCESS_REQUIRED' WHERE id = 1");
+
+        mockMvc.perform(get("/api/documents/stats"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalDocuments").value(1))
+                .andExpect(jsonPath("$.readyDocuments").value(0))
+                .andExpect(jsonPath("$.successRate").value(0.0))
+                .andExpect(jsonPath("$.vectorCount").value(0));
     }
 
     @Test
@@ -305,12 +383,29 @@ class DocumentApiTest {
     @Test
     void reingestsExistingDocument() throws Exception {
         upload("retry.doc", "doc");
+        Timestamp originalUploadStepTime = jdbcTemplate.queryForObject(
+                "SELECT occurred_at FROM document_processing_steps WHERE document_id = 1 AND step_key = 'upload'",
+                Timestamp.class
+        );
 
         mockMvc.perform(post("/api/documents/1/ingest"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(1))
-                .andExpect(jsonPath("$.status").value("READY"))
-                .andExpect(jsonPath("$.chunkCount").value(3));
+                .andExpect(jsonPath("$.status").value("PARSING"));
+
+        mockMvc.perform(get("/api/documents/1/processing"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(6)))
+                .andExpect(jsonPath("$[0].key").value("upload"))
+                .andExpect(jsonPath("$[0].state").value("COMPLETE"))
+                .andExpect(jsonPath("$[1].key").value("extract"));
+        Timestamp reprocessUploadStepTime = jdbcTemplate.queryForObject(
+                "SELECT occurred_at FROM document_processing_steps WHERE document_id = 1 AND step_key = 'upload'",
+                Timestamp.class
+        );
+        assertThat(reprocessUploadStepTime).isNotEqualTo(originalUploadStepTime);
+
+        awaitStatus(1, DocumentProcessingStatus.READY);
     }
 
     @Test
@@ -326,6 +421,31 @@ class DocumentApiTest {
                 .andExpect(status().isNotFound());
         assertThat(Files.exists(storedFile)).isFalse();
         assertThat(ragServer.deletedDocumentIds()).containsExactly("1");
+
+        mockMvc.perform(get("/api/documents/activity"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(2)))
+                .andExpect(jsonPath("$[0].label").value("删除了文档《delete-me.txt》"))
+                .andExpect(jsonPath("$[0].tone").value("RED"))
+                .andExpect(jsonPath("$[1].label").value("上传了文档《delete-me.txt》"))
+                .andExpect(jsonPath("$[1].tone").value("BLUE"));
+    }
+
+    @Test
+    void backfillsMissingUploadActivityWhenDeletingLegacyDocument() throws Exception {
+        upload("legacy-upload.txt", "delete content");
+        jdbcTemplate.update("DELETE FROM document_activity_events");
+
+        mockMvc.perform(delete("/api/documents/1"))
+                .andExpect(status().isNoContent());
+
+        mockMvc.perform(get("/api/documents/activity"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(2)))
+                .andExpect(jsonPath("$[0].label").value("删除了文档《legacy-upload.txt》"))
+                .andExpect(jsonPath("$[0].tone").value("RED"))
+                .andExpect(jsonPath("$[1].label").value("上传了文档《legacy-upload.txt》"))
+                .andExpect(jsonPath("$[1].tone").value("BLUE"));
     }
 
     @Test
@@ -354,7 +474,7 @@ class DocumentApiTest {
     @Test
     void deletesFailedDocumentWithoutCallingRagWhenNoRagDocumentIdExists() throws Exception {
         ragServer.failNextIngest();
-        upload("failed-delete.txt", "content");
+        upload("failed-delete.txt", "content", DocumentProcessingStatus.FAILED);
         Path storedFile = Path.of("target/test-uploads/1-failed-delete.txt");
         assertThat(Files.exists(storedFile)).isTrue();
 
@@ -590,15 +710,41 @@ class DocumentApiTest {
                 .andExpect(jsonPath("$.messages[1].status").value("ERROR"));
     }
 
-    private void upload(String filename, String content) throws Exception {
+    private long upload(String filename, String content) throws Exception {
+        return upload(filename, content, DocumentProcessingStatus.READY);
+    }
+
+    private long upload(String filename, String content, DocumentProcessingStatus expectedStatus) throws Exception {
         MockMultipartFile file = new MockMultipartFile(
                 "file",
                 filename,
                 "application/octet-stream",
                 content.getBytes(StandardCharsets.UTF_8)
         );
-        mockMvc.perform(multipart("/api/documents").file(file))
-                .andExpect(status().isCreated());
+        String response = mockMvc.perform(multipart("/api/documents").file(file))
+                .andExpect(status().isCreated())
+                .andReturn()
+                .getResponse()
+                .getContentAsString(StandardCharsets.UTF_8);
+        long documentId = Long.parseLong(response.replaceAll(".*\\\"id\\\":(\\d+).*", "$1"));
+        awaitStatus(documentId, expectedStatus);
+        return documentId;
+    }
+
+    private void awaitStatus(long documentId, DocumentProcessingStatus status) throws Exception {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (System.nanoTime() < deadline) {
+            String current = jdbcTemplate.queryForObject(
+                    "SELECT status FROM documents WHERE id = ?",
+                    String.class,
+                    documentId
+            );
+            if (status.name().equals(current)) {
+                return;
+            }
+            Thread.sleep(50);
+        }
+        throw new AssertionError("Timed out waiting for document " + documentId + " to become " + status);
     }
 
     private static final class FakeRagServer {
@@ -614,6 +760,7 @@ class DocumentApiTest {
 
         private FakeRagServer() throws IOException {
             server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+            server.createContext("/documents/ingest/events", this::handleIngestEvents);
             server.createContext("/documents/ingest", this::handleIngest);
             server.createContext("/documents/", this::handleDocument);
             server.createContext("/qa", this::handleQa);
@@ -671,6 +818,28 @@ class DocumentApiTest {
                     ? "{\"document_id\":\"1\",\"status\":\"READY\",\"chunk_count\":3,\"vector_count\":3}"
                     : "{\"message\":\"rag unavailable\"}";
             send(exchange, status, body);
+        }
+
+        private void handleIngestEvents(HttpExchange exchange) throws IOException {
+            lastIngestContentType.set(exchange.getRequestHeaders().getFirst("Content-Type"));
+            lastIngestBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            int status = ingestStatus.get();
+            if (status != 200) {
+                send(exchange, status, "{\"message\":\"rag unavailable\"}");
+                return;
+            }
+            byte[] bytes = """
+                    {"stage":"extract","status":"complete","detail":"已提取 897 个字符","characters":897}
+                    {"stage":"split","status":"complete","detail":"已生成 3 个文本块","chunk_count":3}
+                    {"stage":"vector","status":"complete","detail":"已生成 3 个向量","vector_count":3}
+                    {"stage":"index","status":"complete","detail":"索引构建完成","document_id":"1","chunk_count":3,"vector_count":3}
+                    {"stage":"done","status":"complete","detail":"向量已存储并可检索","document_id":"1","chunk_count":3,"vector_count":3}
+                    """.getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/x-ndjson");
+            exchange.sendResponseHeaders(200, bytes.length);
+            try (OutputStream output = exchange.getResponseBody()) {
+                output.write(bytes);
+            }
         }
 
         private void handleDocument(HttpExchange exchange) throws IOException {

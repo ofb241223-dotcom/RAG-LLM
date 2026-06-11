@@ -14,6 +14,7 @@ interface AnswerContentProps {
 
 export function AnswerContent({ content, citations, messageId, onSelectCitation }: AnswerContentProps) {
   const parts = content.split(/(\[\d+\])/g);
+  const hasInlineMarkers = /\[\d+\]/u.test(content);
 
   return (
     <div className="answer-content markdown-body" data-testid={`assistant-answer-${messageId}`}>
@@ -44,6 +45,22 @@ export function AnswerContent({ content, citations, messageId, onSelectCitation 
           </button>
         );
       })}
+      {!hasInlineMarkers && citations.length > 0 ? (
+        <div className="answer-citation-fallback" aria-label="回答引用来源">
+          <span>引用来源</span>
+          {citations.map((citation, index) => (
+            <button
+              aria-label={`引用 ${index + 1}`}
+              className="answer-marker"
+              key={citation.key}
+              type="button"
+              onClick={() => onSelectCitation(citation)}
+            >
+              [{index + 1}]
+            </button>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }

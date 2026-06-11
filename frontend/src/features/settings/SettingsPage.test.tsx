@@ -31,7 +31,7 @@ const settings: SettingsResponse = {
     showCitations: true,
   },
   updatedAt: '2026-06-10T12:00:00Z',
-  updatedBy: '张同学',
+  updatedBy: '科大人',
   vectorStore: {
     type: 'chroma',
     collectionName: 'rag_documents_v1',

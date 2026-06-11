@@ -1,4 +1,5 @@
 import brandLogo from './images/brand-logo.png';
+import kedaAvatar from './images/keda-avatar.svg';
 import userAvatar from './images/user-avatar.png';
 import loginHero from './images/illustrations/login-hero.png';
 import registerHero from './images/illustrations/register-hero.png';
@@ -9,7 +10,7 @@ import wechatIcon from './images/auth-providers/wechat.png';
 
 export const images = {
   brandLogo,
-  userAvatar,
+  userAvatar: kedaAvatar,
   illustrations: {
     loginHero,
     registerHero,

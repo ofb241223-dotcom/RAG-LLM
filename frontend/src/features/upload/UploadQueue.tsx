@@ -71,13 +71,14 @@ function getFileTone(filename: string): string {
   const format = getFileFormat(filename);
   if (format === 'PDF') return 'pdf';
   if (format === 'TXT') return 'txt';
+  if (format === 'XLSX' || format === 'XLS') return 'excel';
   return 'word';
 }
 
 export function UploadQueue({
   api = defaultDocumentsApi,
   maxConcurrentUploads = DEFAULT_MAX_CONCURRENT_UPLOADS,
-  pollIntervalMs = 1700,
+  pollIntervalMs = 500,
   onDocumentReady,
   onOpenDocumentDetail,
 }: UploadQueueProps) {
@@ -277,19 +278,19 @@ export function UploadQueue({
             <span>
               <CloudUpload size={58} />
             </span>
-            <i className="drop-file txt">TXT</i>
+            <i className="drop-file excel">XLS</i>
           </div>
           <strong>
             拖拽文件到此处，或<span>点击上传</span>
           </strong>
-          <small>支持 PDF、TXT、DOCX、DOC 格式，单个文件最大 200MB</small>
+          <small>支持 PDF、TXT、DOCX、DOC、XLSX、XLS 格式，单个文件最大 200MB</small>
           <em>
             <FolderOpen size={17} />
             选择文件
           </em>
           <input
             aria-label="选择文件"
-            accept=".pdf,.txt,.doc,.docx"
+            accept=".pdf,.txt,.doc,.docx,.xls,.xlsx"
             multiple
             type="file"
             onChange={(event) => handleFiles(event.currentTarget.files)}

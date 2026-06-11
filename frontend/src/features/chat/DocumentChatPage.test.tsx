@@ -52,7 +52,7 @@ const settings: SettingsResponse = {
     showCitations: true,
   },
   updatedAt: '2026-06-10T12:00:00Z',
-  updatedBy: '张同学',
+  updatedBy: '科大人',
 };
 
 const settingsApi = {
@@ -81,8 +81,9 @@ describe('DocumentChatPage', () => {
     expect(screen.getByText('7')).toBeInTheDocument();
 
     const citationPanel = screen.getByLabelText('引用片段列表');
-    expect(within(citationPanel).getByText('3.2 多头注意力机制')).toBeInTheDocument();
-    expect(within(citationPanel).getByText('相似度 0.92')).toBeInTheDocument();
+    expect(within(citationPanel).getByText('引用片段 [1]')).toBeInTheDocument();
+    expect(within(citationPanel).getByText('相似度 92% · score 0.92')).toBeInTheDocument();
+    expect(within(citationPanel).queryByText('3.2 多头注意力机制')).not.toBeInTheDocument();
   });
 
   it('renders assistant markdown and LaTeX, then sends follow-up questions with topK', async () => {
@@ -132,5 +133,101 @@ describe('DocumentChatPage', () => {
     const nextAnswer = await screen.findByTestId('assistant-answer-104');
     expect(nextAnswer.textContent).toContain('位置编码使用正弦和余弦函数表示');
     expect(nextAnswer.querySelector('.katex')).not.toBeNull();
+  });
+
+  it('shows citations for the latest answer by default and switches when an older marker is clicked', async () => {
+    const olderCitation = {
+      ...citation,
+      key: '102:1:98_3',
+      markerIndex: 1,
+      chunkId: '98_3',
+      score: 0.92,
+      text: '旧回答的完整引用片段，来自第一轮问题。',
+    };
+    const latestCitation = {
+      ...citation,
+      key: '104:1:110_2',
+      markerIndex: 1,
+      chunkId: '110_2',
+      score: 0.83,
+      text: '最新回答的引用片段，应该默认显示在右侧。',
+    };
+    const secondLatestCitation = {
+      ...citation,
+      key: '104:1:111_3',
+      markerIndex: 2,
+      chunkId: '111_3',
+      score: 0.81,
+      text: '最新回答的第二个引用片段，应该显示为 [2]。',
+    };
+    const multiTurnDetail: ChatSessionDetailDto = {
+      ...sessionDetail,
+      messages: [
+        {
+          id: 101,
+          role: 'USER',
+          content: '第一轮问题',
+          status: 'SUCCESS',
+          createdAt: '2024-05-20T10:21:00+08:00',
+          citations: [],
+        },
+        {
+          id: 102,
+          role: 'ASSISTANT',
+          content: '第一轮回答。[1]',
+          status: 'SUCCESS',
+          createdAt: '2024-05-20T10:21:10+08:00',
+          citations: [olderCitation],
+        },
+        {
+          id: 103,
+          role: 'USER',
+          content: '第二轮问题',
+          status: 'SUCCESS',
+          createdAt: '2024-05-20T10:22:00+08:00',
+          citations: [],
+        },
+        {
+          id: 104,
+          role: 'ASSISTANT',
+          content: '第二轮回答。[1]',
+          status: 'SUCCESS',
+          createdAt: '2024-05-20T10:22:10+08:00',
+          citations: [latestCitation, secondLatestCitation],
+        },
+      ],
+    };
+    const chatApi = createChatApi({
+      getSession: vi.fn(async () => multiTurnDetail),
+    });
+
+    render(<DocumentChatPage chatApi={chatApi} settingsApi={settingsApi} initialDocumentId={1} />);
+
+    const citationPanel = await screen.findByLabelText('引用片段列表');
+    expect(within(citationPanel).getByText('最新回答的引用片段，应该默认显示在右侧。')).toBeInTheDocument();
+    expect(within(citationPanel).getByText('引用片段 [1]')).toBeInTheDocument();
+    expect(within(citationPanel).getByText('引用片段 [2]')).toBeInTheDocument();
+    expect(within(citationPanel).queryByText('旧回答的完整引用片段，来自第一轮问题。')).not.toBeInTheDocument();
+
+    const olderAnswer = await screen.findByTestId('assistant-answer-102');
+    fireEvent.click(within(olderAnswer).getByRole('button', { name: '引用 1' }));
+
+    expect(within(citationPanel).getByText('旧回答的完整引用片段，来自第一轮问题。')).toBeInTheDocument();
+    expect(within(citationPanel).getByText('引用片段 [1]')).toBeInTheDocument();
+    expect(within(citationPanel).queryByText('引用片段 [2]')).not.toBeInTheDocument();
+    expect(within(citationPanel).queryByText('最新回答的引用片段，应该默认显示在右侧。')).not.toBeInTheDocument();
+  });
+
+  it('opens the full citation text in a dialog when a citation card is clicked', async () => {
+    const chatApi = createChatApi();
+
+    render(<DocumentChatPage chatApi={chatApi} settingsApi={settingsApi} initialDocumentId={1} />);
+
+    const citationPanel = await screen.findByLabelText('引用片段列表');
+    fireEvent.click(within(citationPanel).getByRole('button', { name: /引用片段 \[1\]/u }));
+
+    const dialog = await screen.findByRole('dialog', { name: '引用片段 [1]' });
+    expect(within(dialog).getByText('相似度 92% · score 0.92 · 第 98 页 · Chunk: 98_3')).toBeInTheDocument();
+    expect(within(dialog).getByText('多头注意力允许模型在不同表示子空间中关注输入序列的不同位置。')).toBeInTheDocument();
   });
 });

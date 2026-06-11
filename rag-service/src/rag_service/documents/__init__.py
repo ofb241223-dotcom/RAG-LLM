@@ -6,6 +6,8 @@ from rag_service.documents.formats import (
     PDF,
     SUPPORTED_FORMATS,
     TXT,
+    XLS,
+    XLSX,
     is_supported_format,
     validate_format,
 )
@@ -19,6 +21,8 @@ __all__ = [
     "ParsedDocument",
     "SUPPORTED_FORMATS",
     "TXT",
+    "XLS",
+    "XLSX",
     "is_supported_format",
     "validate_format",
 ]

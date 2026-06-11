@@ -7,7 +7,9 @@ public enum DocumentFormat {
     PDF,
     TXT,
     DOCX,
-    DOC;
+    DOC,
+    XLSX,
+    XLS;
 
     public static DocumentFormat fromFilename(String filename) {
         if (filename == null || filename.isBlank() || !filename.contains(".")) {

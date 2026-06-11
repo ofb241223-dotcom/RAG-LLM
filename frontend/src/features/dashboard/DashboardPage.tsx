@@ -1,15 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ChevronRight, CloudUpload, Database, MessageCircle, RotateCcw } from 'lucide-react';
-import { chatApi as defaultChatApi, type ChatApi, type ChatSessionSummaryDto } from '../../api/chat';
+import { ChevronRight, CloudUpload, Database, MessageCircle, RotateCcw, X } from 'lucide-react';
+import { chatApi as defaultChatApi, type ChatApi, type ChatDocumentDto, type ChatSessionSummaryDto } from '../../api/chat';
 import { documentsApi as defaultDocumentsApi, type DocumentsApi } from '../../api/documents';
 import { demoDocuments, demoStats, processSteps, type DashboardStat } from '../../data/demo';
-import type { DocumentDto } from '../../types/document';
+import type { DocumentActivityDto, DocumentDto } from '../../types/document';
 import { formatDateTime } from '../chat/chatFormat';
 import { DocumentTable } from '../documents/DocumentTable';
 
 interface DashboardPageProps {
-  documentsApi?: Pick<DocumentsApi, 'list'>;
-  chatApi?: Pick<ChatApi, 'listSessions'>;
+  documentsApi?: Pick<DocumentsApi, 'list'> & Partial<Pick<DocumentsApi, 'activities'>>;
+  chatApi?: Pick<ChatApi, 'listSessions'> & Partial<Pick<ChatApi, 'listDocuments'>>;
   onNavigate: (view: 'documents' | 'upload' | 'chat') => void;
 }
 
@@ -18,20 +18,23 @@ interface DashboardActivity {
   label: string;
   time: string;
   timestamp: number;
-  tone: 'blue' | 'green' | 'purple' | 'orange';
+  tone: 'blue' | 'green' | 'purple' | 'orange' | 'red';
 }
 
 const RECENT_ACTIVITY_LIMIT = 4;
 
-function buildStats(documents: DocumentDto[], total: number): DashboardStat[] {
+function buildStats(documents: DocumentDto[], total: number, conversationTotal: number): DashboardStat[] {
   const readyCount = documents.filter((document) => document.status === 'READY').length;
-  const vectorCount = documents.reduce((sum, document) => sum + (document.vectorCount ?? 0), 0);
+  const vectorCount = documents
+    .filter((document) => document.status === 'READY')
+    .reduce((sum, document) => sum + (document.vectorCount ?? 0), 0);
 
   return demoStats.map((stat) => {
-    if (stat.label === '文档总数') return { ...stat, value: String(total || documents.length), trend: '' };
+    if (stat.label === '文档总数') return { ...stat, value: String(total || documents.length), metaLabel: '', trend: '' };
     if (stat.label === '已解析文档') return { ...stat, value: String(readyCount), trend: documents.length ? `${Math.round((readyCount / documents.length) * 100)}%` : '0%' };
     if (stat.label === '向量总数') return { ...stat, value: vectorCount.toLocaleString('zh-CN') };
-    return { ...stat, value: '0', trend: '' };
+    if (stat.label === '对话总数') return { ...stat, value: conversationTotal.toLocaleString('zh-CN'), metaLabel: '', trend: '' };
+    return stat;
   });
 }
 
@@ -42,14 +45,26 @@ function timestampOf(value?: string | null): number {
 }
 
 function documentTitle(filename: string): string {
-  return filename.replace(/\.(pdf|txt|docx|doc)$/iu, '');
+  return filename.replace(/\.(pdf|txt|docx|doc|xlsx|xls)$/iu, '');
 }
 
 function newestActivities(activities: DashboardActivity[]): DashboardActivity[] {
+  return sortActivities(activities).slice(0, RECENT_ACTIVITY_LIMIT);
+}
+
+function sortActivities(activities: DashboardActivity[]): DashboardActivity[] {
+  const seen = new Set<string>();
   return activities
     .filter((activity) => activity.timestamp > 0)
-    .sort((left, right) => right.timestamp - left.timestamp)
-    .slice(0, RECENT_ACTIVITY_LIMIT);
+    .filter((activity) => {
+      const key = `${activity.tone}|${activity.timestamp}|${activity.label}`;
+      if (seen.has(key)) {
+        return false;
+      }
+      seen.add(key);
+      return true;
+    })
+    .sort((left, right) => right.timestamp - left.timestamp);
 }
 
 function buildDocumentActivities(documents: DocumentDto[]): DashboardActivity[] {
@@ -102,10 +117,26 @@ function buildChatActivities(documents: DocumentDto[], sessionsByDocument: Map<n
   );
 }
 
+function activityTone(tone: DocumentActivityDto['tone']): DashboardActivity['tone'] {
+  return tone.toLowerCase() as DashboardActivity['tone'];
+}
+
+function buildPersistedActivities(activities: DocumentActivityDto[]): DashboardActivity[] {
+  return activities.map((activity) => ({
+    id: `persisted-${activity.id}`,
+    label: activity.label,
+    time: formatDateTime(activity.occurredAt),
+    timestamp: timestampOf(activity.occurredAt),
+    tone: activityTone(activity.tone),
+  }));
+}
+
 export function DashboardPage({ documentsApi = defaultDocumentsApi, chatApi = defaultChatApi, onNavigate }: DashboardPageProps) {
   const [documents, setDocuments] = useState<DocumentDto[]>(demoDocuments);
   const [total, setTotal] = useState(demoDocuments.length);
-  const [activities, setActivities] = useState<DashboardActivity[]>([]);
+  const [conversationTotal, setConversationTotal] = useState(0);
+  const [allActivities, setAllActivities] = useState<DashboardActivity[]>([]);
+  const [activityDialogOpen, setActivityDialogOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const loadDocuments = useCallback(async () => {
@@ -115,18 +146,33 @@ export function DashboardPage({ documentsApi = defaultDocumentsApi, chatApi = de
       setDocuments(result.items);
       setTotal(result.total);
       const documentActivities = buildDocumentActivities(result.items);
-      setActivities(newestActivities(documentActivities));
+      setAllActivities(sortActivities(documentActivities));
       const sessionResults = await Promise.allSettled(result.items.map((document) => chatApi.listSessions(document.id)));
+      const chatDocumentsResult = await (chatApi.listDocuments
+        ? chatApi.listDocuments().then(
+            (items: ChatDocumentDto[]) => items.reduce((sum, document) => sum + document.sessionCount, 0),
+            () => null,
+          )
+        : Promise.resolve(null));
+      const persistedActivityResult = await (documentsApi.activities
+        ? documentsApi.activities(50).then(
+            (items) => buildPersistedActivities(items),
+            () => [],
+          )
+        : Promise.resolve([]));
       const sessionsByDocument = new Map<number, ChatSessionSummaryDto[]>();
       result.items.forEach((document, index) => {
         const sessionResult = sessionResults[index];
         sessionsByDocument.set(document.id, sessionResult.status === 'fulfilled' ? sessionResult.value : []);
       });
-      setActivities(newestActivities([...documentActivities, ...buildChatActivities(result.items, sessionsByDocument)]));
+      const visibleSessionTotal = Array.from(sessionsByDocument.values()).reduce((sum, sessions) => sum + sessions.length, 0);
+      setConversationTotal(chatDocumentsResult ?? visibleSessionTotal);
+      setAllActivities(sortActivities([...documentActivities, ...buildChatActivities(result.items, sessionsByDocument), ...persistedActivityResult]));
     } catch {
       setDocuments(demoDocuments);
       setTotal(128);
-      setActivities([]);
+      setConversationTotal(0);
+      setAllActivities([]);
       setError('后端暂不可用，当前显示本地占位数据。');
     }
   }, [chatApi, documentsApi]);
@@ -135,7 +181,8 @@ export function DashboardPage({ documentsApi = defaultDocumentsApi, chatApi = de
     void loadDocuments();
   }, [loadDocuments]);
 
-  const stats = useMemo(() => (error || documents === demoDocuments ? demoStats : buildStats(documents, total)), [documents, error, total]);
+  const stats = useMemo(() => (error || documents === demoDocuments ? demoStats : buildStats(documents, total, conversationTotal)), [conversationTotal, documents, error, total]);
+  const activities = useMemo(() => newestActivities(allActivities), [allActivities]);
 
   return (
     <>
@@ -165,10 +212,12 @@ export function DashboardPage({ documentsApi = defaultDocumentsApi, chatApi = de
                 <strong>{item.value}</strong>
                 <em>{item.unit}</em>
               </div>
-              <small>
-                {item.metaLabel}
-                {item.trend ? <b className="trend-value"> {item.trend}</b> : null}
-              </small>
+              {item.metaLabel || item.trend ? (
+                <small>
+                  {item.metaLabel}
+                  {item.trend ? <b className="trend-value"> {item.trend}</b> : null}
+                </small>
+              ) : null}
             </div>
             <div className="stat-icon" data-testid="stat-icon">
               <Icon size={34} />
@@ -195,7 +244,7 @@ export function DashboardPage({ documentsApi = defaultDocumentsApi, chatApi = de
             <CloudUpload size={22} />
             <span>
               上传新文档
-              <small>PDF / TXT / Word</small>
+              <small>PDF / TXT / Word / Excel</small>
             </span>
             <ChevronRight size={18} />
           </button>
@@ -210,8 +259,8 @@ export function DashboardPage({ documentsApi = defaultDocumentsApi, chatApi = de
           <button type="button" onClick={() => onNavigate('documents')}>
             <Database size={22} />
             <span>
-              查看向量库
-              <small>浏览文档向量与索引信息</small>
+              查看向量索引
+              <small>浏览已入库文档与文本块状态</small>
             </span>
             <ChevronRight size={18} />
           </button>
@@ -236,7 +285,7 @@ export function DashboardPage({ documentsApi = defaultDocumentsApi, chatApi = de
         <article className="panel activity-panel">
           <div className="panel-heading">
             <h2>最近动态</h2>
-            <button className="link-button" type="button" onClick={() => onNavigate('documents')}>
+            <button className="link-button" type="button" onClick={() => setActivityDialogOpen(true)}>
               查看全部
               <ChevronRight size={16} />
             </button>
@@ -262,6 +311,41 @@ export function DashboardPage({ documentsApi = defaultDocumentsApi, chatApi = de
           </ol>
         </article>
       </section>
+
+      {activityDialogOpen ? (
+        <div className="dialog-backdrop" role="presentation">
+          <section aria-labelledby="activity-dialog-title" aria-modal="true" className="confirm-dialog wide-dialog activity-dialog" role="dialog">
+            <div className="activity-dialog-heading">
+              <div>
+                <h2 id="activity-dialog-title">全部动态</h2>
+                <p>按时间倒序展示文档上传、解析、向量入库和问答记录。</p>
+              </div>
+              <button aria-label="关闭全部动态" className="icon-button" type="button" onClick={() => setActivityDialogOpen(false)}>
+                <X size={18} />
+              </button>
+            </div>
+            <ol className="activity-dialog-list">
+              {allActivities.length > 0 ? allActivities.map((activity) => (
+                <li className={activity.tone} key={activity.id}>
+                  <span />
+                  <div>
+                    <strong>{activity.label}</strong>
+                    <time>{activity.time}</time>
+                  </div>
+                </li>
+              )) : (
+                <li className="blue">
+                  <span />
+                  <div>
+                    <strong>暂无动态</strong>
+                    <time>等待文档上传或问答记录</time>
+                  </div>
+                </li>
+              )}
+            </ol>
+          </section>
+        </div>
+      ) : null}
     </>
   );
 }

@@ -5,8 +5,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.example.ragllm.settings.RuntimeModelConfig;
 import com.example.ragllm.settings.SettingsTestResponse;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.nio.file.Path;
+import java.util.function.Consumer;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.http.HttpHeaders;
@@ -51,6 +55,52 @@ public class RestClientRagServiceClient implements RagServiceClient {
             throw new RagServiceException(extractErrorMessage(exception), exception);
         } catch (RestClientException exception) {
             throw new RagServiceException("RAG service request failed", exception);
+        }
+    }
+
+    @Override
+    public RagIngestResponse ingestWithProgress(RagIngestRequest request, RuntimeModelConfig runtimeConfig, Consumer<RagIngestEvent> eventConsumer) {
+        try {
+            MultiValueMap<String, Object> body = buildIngestBody(request, runtimeConfig);
+            return restClient.post()
+                    .uri("/documents/ingest/events")
+                    .contentType(MediaType.MULTIPART_FORM_DATA)
+                    .accept(MediaType.APPLICATION_NDJSON)
+                    .body(body)
+                    .exchange((ignoredRequest, response) -> {
+                        if (response.getStatusCode().isError()) {
+                            throw new RagServiceException(extractErrorMessage(response.getStatusCode().value(), new String(response.getBody().readAllBytes(), StandardCharsets.UTF_8)));
+                        }
+                        RagIngestResponse finalResponse = null;
+                        try (BufferedReader reader = new BufferedReader(new InputStreamReader(response.getBody(), StandardCharsets.UTF_8))) {
+                            String line;
+                            while ((line = reader.readLine()) != null) {
+                                if (line.isBlank()) {
+                                    continue;
+                                }
+                                RagIngestEvent event = OBJECT_MAPPER.readValue(line, RagIngestEvent.class);
+                                eventConsumer.accept(event);
+                                if ("done".equalsIgnoreCase(event.stage())) {
+                                    finalResponse = new RagIngestResponse(
+                                            event.documentId(),
+                                            "READY",
+                                            event.chunkCount(),
+                                            event.vectorCount()
+                                    );
+                                }
+                            }
+                        }
+                        if (finalResponse == null) {
+                            throw new RagServiceException("RAG service did not emit a final ingest event");
+                        }
+                        return finalResponse;
+                    });
+        } catch (RagServiceException exception) {
+            throw exception;
+        } catch (RestClientResponseException exception) {
+            throw new RagServiceException(extractErrorMessage(exception), exception);
+        } catch (Exception exception) {
+            throw new RagServiceException("RAG service progress request failed", exception);
         }
     }
 
@@ -171,8 +221,11 @@ public class RestClientRagServiceClient implements RagServiceClient {
     }
 
     private String extractErrorMessage(RestClientResponseException exception) {
-        String fallback = "RAG service request failed with status " + exception.getStatusCode().value();
-        String body = exception.getResponseBodyAsString();
+        return extractErrorMessage(exception.getStatusCode().value(), exception.getResponseBodyAsString());
+    }
+
+    private String extractErrorMessage(int statusCode, String body) {
+        String fallback = "RAG service request failed with status " + statusCode;
         if (!StringUtils.hasText(body)) {
             return fallback;
         }

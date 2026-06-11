@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 from fastapi import Body, FastAPI, File, Form, HTTPException, UploadFile
+from fastapi.responses import StreamingResponse
 from pydantic import ValidationError
 
 from rag_service.config import Settings
@@ -52,6 +53,17 @@ def create_app(
     app.state.embedding_provider = embedding_provider or create_embedding_provider(settings)
     app.state.llm_provider = llm_provider or create_llm_provider(settings)
 
+    def create_parser_registry() -> object:
+        current_settings = app.state.settings
+        return create_default_parser_registry(
+            mineru_api_token=current_settings.mineru_api_token,
+            mineru_api_base_url=current_settings.mineru_api_base_url,
+            mineru_enabled=current_settings.mineru_enabled,
+            mineru_model_version=current_settings.mineru_model_version,
+            mineru_timeout_seconds=current_settings.mineru_timeout_seconds,
+            mineru_poll_interval_seconds=current_settings.mineru_poll_interval_seconds,
+        )
+
     def get_vector_store(runtime_config: RuntimeModelConfig | None = None) -> ChromaVectorStore:
         if runtime_config is not None:
             if runtime_config.vector_store_type.strip().lower() != "chroma":
@@ -67,7 +79,7 @@ def create_app(
     def get_service(runtime_config: RuntimeModelConfig | None = None) -> RagService:
         if runtime_config is not None:
             return RagService(
-                parser_registry=create_default_parser_registry(),
+                parser_registry=create_parser_registry(),
                 embedding_provider=create_embedding_provider(app.state.settings, runtime_config),
                 llm_provider=create_llm_provider(app.state.settings, runtime_config),
                 vector_store=get_vector_store(runtime_config),
@@ -77,7 +89,7 @@ def create_app(
             )
         if not hasattr(app.state, "rag_service"):
             app.state.rag_service = RagService(
-                parser_registry=create_default_parser_registry(),
+                parser_registry=create_parser_registry(),
                 embedding_provider=app.state.embedding_provider,
                 llm_provider=app.state.llm_provider,
                 vector_store=get_vector_store(),
@@ -123,6 +135,36 @@ def create_app(
             raise HTTPException(status_code=503, detail=str(error)) from error
         except ProviderRequestError as error:
             raise HTTPException(status_code=502, detail=str(error)) from error
+
+    @app.post("/documents/ingest/events")
+    async def ingest_document_events(
+        file: UploadFile = File(...),
+        document_id: str | None = Form(default=None),
+        runtime_config: str | None = Form(default=None),
+    ) -> StreamingResponse:
+        try:
+            parsed_runtime_config = parse_runtime_config(runtime_config)
+            content = await file.read()
+            payload = DocumentPayload(
+                content=content,
+                source_name=file.filename or "document",
+                document_id=document_id,
+            )
+        except ValidationError as error:
+            raise HTTPException(status_code=400, detail="Invalid runtime_config payload.") from error
+
+        def stream_events():
+            try:
+                for event, _response in get_service(parsed_runtime_config).ingest_events(payload):
+                    yield event.model_dump_json(exclude_none=True) + "\n"
+            except (ValueError, DocumentParsingError, EmptyDocumentError) as error:
+                raise HTTPException(status_code=400, detail=str(error)) from error
+            except ProviderConfigurationError as error:
+                raise HTTPException(status_code=503, detail=str(error)) from error
+            except ProviderRequestError as error:
+                raise HTTPException(status_code=502, detail=str(error)) from error
+
+        return StreamingResponse(stream_events(), media_type="application/x-ndjson")
 
     @app.post("/qa", response_model=QaResponse)
     def ask(request: QaRequest) -> QaResponse:

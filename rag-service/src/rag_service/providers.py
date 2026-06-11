@@ -42,6 +42,23 @@ class LlmProvider(Protocol):
         """Generate an answer grounded in retrieved contexts."""
 
 
+def _citation_instruction() -> str:
+    return (
+        "请用 Markdown 输出中文答案。必须遵守：\n"
+        "1. 只能依据给定引用片段回答，不能编造片段外信息。\n"
+        "2. 每个关键结论、名单项、判断句后都要标注引用编号，格式必须是 [1]、[2]。\n"
+        "3. 引用编号只能来自下方引用片段编号；如果资料不足，请说明无法判断，并标注最相关片段编号。\n"
+        "4. 如果问题要求列举多人或多项，请逐项列出，并在每一项后标注对应引用编号。"
+    )
+
+
+def _format_source_text(contexts: Iterable[LlmContext]) -> str:
+    return "\n\n".join(
+        f"[{index}] 来源：{context.source_name}\n片段：{context.text}"
+        for index, context in enumerate(contexts, start=1)
+    )
+
+
 def _is_missing_key(value: str | None) -> bool:
     if value is None:
         return True
@@ -169,13 +186,10 @@ class GoogleGeminiLlmProvider:
             raise ProviderConfigurationError("GOOGLE_LLM_API_KEY is not configured.")
 
         context_list = list(contexts)
-        source_text = "\n\n".join(
-            f"[{index}] 来源：{context.source_name}\n片段：{context.text}"
-            for index, context in enumerate(context_list, start=1)
-        )
+        source_text = _format_source_text(context_list)
         prompt = (
             f"{self.system_prompt}"
-            "请用 Markdown 输出中文答案，必要时可使用 LaTeX 公式，并在关键结论后标注引用编号。\n\n"
+            f"\n\n{_citation_instruction()}\n\n"
             f"问题：{question}\n\n引用片段：\n{source_text}\n\n答案："
         )
 
@@ -228,10 +242,7 @@ class OpenAICompatibleLlmProvider:
             raise ProviderConfigurationError(self.missing_key_message)
 
         context_list = list(contexts)
-        source_text = "\n\n".join(
-            f"[{index}] 来源：{context.source_name}\n片段：{context.text}"
-            for index, context in enumerate(context_list, start=1)
-        )
+        source_text = _format_source_text(context_list)
         client = self.client_factory(api_key=self.api_key, base_url=self.base_url)
         try:
             kwargs: dict[str, object] = {
@@ -244,7 +255,7 @@ class OpenAICompatibleLlmProvider:
                     },
                     {
                         "role": "user",
-                        "content": f"问题：{question}\n\n引用片段：\n{source_text}\n\n请给出中文答案。",
+                        "content": f"{_citation_instruction()}\n\n问题：{question}\n\n引用片段：\n{source_text}\n\n答案：",
                     },
                 ],
             }

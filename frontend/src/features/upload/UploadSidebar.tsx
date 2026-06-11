@@ -12,7 +12,7 @@ interface GuideItem {
 const guideItems: GuideItem[] = [
   {
     label: '支持格式',
-    value: 'PDF / TXT / Word',
+    value: 'PDF / TXT / Word / Excel',
     icon: <FileText size={18} />,
     tone: '#ef4444',
   },

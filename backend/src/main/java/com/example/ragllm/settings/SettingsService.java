@@ -7,6 +7,7 @@ import com.example.ragllm.document.RagServiceException;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
+import java.util.Locale;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -124,7 +125,7 @@ public class SettingsService {
                 boolOr(current.currentDocumentOnly(), rag == null ? null : rag.currentDocumentOnly()),
                 boolOr(current.showCitations(), rag == null ? null : rag.showCitations()),
                 now,
-                "张同学"
+                "科大人"
         );
     }
 
@@ -191,7 +192,7 @@ public class SettingsService {
                 settings.embeddingModel(),
                 null,
                 settings.vectorStoreType(),
-                settings.vectorCollectionName(),
+                runtimeCollectionName(settings),
                 settings.vectorPersistDir(),
                 settings.temperature(),
                 settings.maxTokens(),
@@ -208,6 +209,19 @@ public class SettingsService {
                 settings.currentDocumentOnly(),
                 settings.showCitations()
         );
+    }
+
+    private String runtimeCollectionName(SystemSettings settings) {
+        String baseName = textOr("rag_documents_v1", settings.vectorCollectionName());
+        String namespace = (settings.embeddingProvider() + "_" + settings.embeddingModel())
+                .toLowerCase(Locale.ROOT)
+                .replaceAll("[^a-z0-9._-]+", "_")
+                .replaceAll("_+", "_")
+                .replaceAll("^_+|_+$", "");
+        if (!StringUtils.hasText(namespace)) {
+            return baseName;
+        }
+        return baseName + "__" + namespace;
     }
 
     private String secretOrCurrent(String current, String candidate) {

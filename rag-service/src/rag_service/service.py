@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from collections.abc import Iterator
 from pathlib import Path
 from uuid import uuid4
 
@@ -9,7 +10,7 @@ from rag_service.documents.formats import validate_format
 from rag_service.documents.parser import ParserRegistry
 from rag_service.documents.parsers import DocumentParsingError
 from rag_service.providers import EmbeddingProvider, LlmContext, LlmProvider
-from rag_service.schemas import ChunkResponse, CitationResponse, IngestResponse, QaResponse
+from rag_service.schemas import ChunkResponse, CitationResponse, IngestEventResponse, IngestResponse, QaResponse
 from rag_service.vector_store import ChromaVectorStore
 
 
@@ -45,6 +46,15 @@ class RagService:
         self.score_threshold = score_threshold
 
     def ingest(self, payload: DocumentPayload) -> IngestResponse:
+        final_response: IngestResponse | None = None
+        for _event, response in self.ingest_events(payload):
+            if response is not None:
+                final_response = response
+        if final_response is None:
+            raise EmptyDocumentError("Document contains no extractable text.")
+        return final_response
+
+    def ingest_events(self, payload: DocumentPayload) -> Iterator[tuple[IngestEventResponse, IngestResponse | None]]:
         format_name = validate_format(Path(payload.source_name).suffix)
         parser = self.parser_registry.get_parser(format_name)
         try:
@@ -58,11 +68,35 @@ class RagService:
         if not chunks:
             raise EmptyDocumentError("Document contains no extractable text.")
 
+        yield (
+            IngestEventResponse(
+                stage="extract",
+                detail=f"已提取 {len(parsed.text)} 个字符",
+                characters=len(parsed.text),
+            ),
+            None,
+        )
+        yield (
+            IngestEventResponse(
+                stage="split",
+                detail=f"已生成 {len(chunks)} 个文本块",
+                chunk_count=len(chunks),
+            ),
+            None,
+        )
         embeddings = self.embedding_provider.embed_texts(
             [chunk.text for chunk in chunks],
             task_type="RETRIEVAL_DOCUMENT",
         )
         document_id = payload.document_id or uuid4().hex
+        yield (
+            IngestEventResponse(
+                stage="vector",
+                detail=f"已生成 {len(embeddings)} 个向量",
+                vector_count=len(embeddings),
+            ),
+            None,
+        )
         vector_count = self.vector_store.upsert_document(
             document_id=document_id,
             source_name=payload.source_name,
@@ -70,14 +104,24 @@ class RagService:
             chunks=chunks,
             embeddings=embeddings,
         )
-
-        return IngestResponse(
+        response = IngestResponse(
             document_id=document_id,
             status="READY",
             format=format_name.upper(),
             chunk_count=len(chunks),
             vector_count=vector_count,
             source_name=payload.source_name,
+        )
+        yield (IngestEventResponse(stage="index", detail="索引构建完成", document_id=document_id, chunk_count=len(chunks), vector_count=vector_count), None)
+        yield (
+            IngestEventResponse(
+                stage="done",
+                detail="向量已存储并可检索",
+                document_id=document_id,
+                chunk_count=len(chunks),
+                vector_count=vector_count,
+            ),
+            response,
         )
 
     def ask(self, *, question: str, document_ids: list[str] | None, top_k: int) -> QaResponse:

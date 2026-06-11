@@ -1,5 +1,14 @@
 import { ApiError, apiRequest, buildApiUrl } from './client';
-import type { DocumentBatchResult, DocumentChunkDto, DocumentDto, DocumentListParams, DocumentListResponse, DocumentStats } from '../types/document';
+import type {
+  DocumentActivityDto,
+  DocumentBatchResult,
+  DocumentChunkDto,
+  DocumentDto,
+  DocumentListParams,
+  DocumentListResponse,
+  DocumentProcessingStepDto,
+  DocumentStats,
+} from '../types/document';
 
 export interface UploadOptions {
   onUploadProgress?: (percent: number) => void;
@@ -12,6 +21,8 @@ export interface DocumentsApi {
   upload(file: File, options?: UploadOptions): Promise<DocumentDto>;
   get(documentId: number): Promise<DocumentDto>;
   chunks(documentId: number): Promise<DocumentChunkDto[]>;
+  processing(documentId: number): Promise<DocumentProcessingStepDto[]>;
+  activities(limit?: number): Promise<DocumentActivityDto[]>;
   downloadUrl(documentId: number): string;
   reprocess(documentId: number): Promise<DocumentDto>;
   delete(documentId: number): Promise<void>;
@@ -54,6 +65,27 @@ function normalizeList(payload: DocumentListResponse | DocumentDto[]): DocumentL
 function parseUploadResponse(xhr: XMLHttpRequest): DocumentDto {
   const text = xhr.responseText || String(xhr.response ?? '');
   return JSON.parse(text) as DocumentDto;
+}
+
+function parseUploadError(xhr: XMLHttpRequest): string {
+  const text = xhr.responseText || String(xhr.response ?? '');
+  if (!text) {
+    return `上传失败 (${xhr.status})`;
+  }
+
+  try {
+    const payload = JSON.parse(text) as { message?: unknown; error?: unknown };
+    if (typeof payload.message === 'string' && payload.message.trim()) {
+      return payload.message;
+    }
+    if (typeof payload.error === 'string' && payload.error.trim()) {
+      return payload.error;
+    }
+  } catch {
+    return text;
+  }
+
+  return text;
 }
 
 export const documentsApi: DocumentsApi = {
@@ -102,12 +134,12 @@ export const documentsApi: DocumentsApi = {
           return;
         }
 
-        reject(new ApiError(xhr.responseText || `上传失败 (${xhr.status})`, xhr.status));
+        reject(new ApiError(parseUploadError(xhr), xhr.status));
       };
 
       xhr.onerror = () => {
         cleanupAbortListener();
-        reject(new ApiError('网络错误，上传失败', 0));
+        reject(new ApiError('上传请求未到达后端，请确认后端服务正在运行或文件大小未超过限制', 0));
       };
       xhr.ontimeout = () => {
         cleanupAbortListener();
@@ -129,6 +161,14 @@ export const documentsApi: DocumentsApi = {
 
   chunks(documentId) {
     return apiRequest<DocumentChunkDto[]>(`/documents/${documentId}/chunks`);
+  },
+
+  processing(documentId) {
+    return apiRequest<DocumentProcessingStepDto[]>(`/documents/${documentId}/processing`);
+  },
+
+  activities(limit = 50) {
+    return apiRequest<DocumentActivityDto[]>(`/documents/activity?limit=${limit}`);
   },
 
   downloadUrl(documentId) {

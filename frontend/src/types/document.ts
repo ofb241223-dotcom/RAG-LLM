@@ -1,6 +1,6 @@
 export type ProcessingStatus = 'UPLOADED' | 'PARSING' | 'EMBEDDING' | 'READY' | 'FAILED' | 'REPROCESS_REQUIRED';
 
-export type DocumentFormat = 'PDF' | 'TXT' | 'DOCX' | 'DOC';
+export type DocumentFormat = 'PDF' | 'TXT' | 'DOCX' | 'DOC' | 'XLSX' | 'XLS';
 
 export type DocumentSource = 'MANUAL_UPLOAD' | 'LOCAL_IMPORT' | 'API_IMPORT';
 
@@ -43,12 +43,32 @@ export interface DocumentStats {
   vectorCount: number;
 }
 
+export type DocumentProcessingStepState = 'PENDING' | 'ACTIVE' | 'COMPLETE' | 'FAILED';
+
+export interface DocumentProcessingStepDto {
+  id: number;
+  key: string;
+  label: string;
+  detail: string;
+  state: DocumentProcessingStepState;
+  occurredAt?: string | null;
+}
+
 export interface DocumentBatchResult {
   deletedCount: number;
   failures: Array<{
     id: number | null;
     message: string;
   }>;
+}
+
+export type DocumentActivityTone = 'BLUE' | 'GREEN' | 'PURPLE' | 'ORANGE' | 'RED';
+
+export interface DocumentActivityDto {
+  id: number;
+  label: string;
+  tone: DocumentActivityTone;
+  occurredAt: string;
 }
 
 export interface DocumentChunkDto {

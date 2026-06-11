@@ -27,7 +27,7 @@ class StatusControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.service").value("rag-llm-backend"))
                 .andExpect(jsonPath("$.status").value("UP"))
-                .andExpect(jsonPath("$.documentFormats", containsInAnyOrder("PDF", "TXT", "DOCX", "DOC")))
+                .andExpect(jsonPath("$.documentFormats", containsInAnyOrder("PDF", "TXT", "DOCX", "DOC", "XLSX", "XLS")))
                 .andExpect(jsonPath("$.processingStatuses",
                         containsInAnyOrder("UPLOADED", "PARSING", "EMBEDDING", "REPROCESS_REQUIRED", "READY", "FAILED")));
     }

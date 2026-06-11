@@ -31,4 +31,14 @@ describe('AnswerContent', () => {
     expect(screen.getByRole('button', { name: '引用 2' })).toBeDisabled();
     expect(within(screen.getByTestId('assistant-answer-102')).getByText('无匹配来源。')).toBeInTheDocument();
   });
+
+  it('shows citation buttons when the model response omits inline markers', () => {
+    const onSelectCitation = vi.fn();
+
+    render(<AnswerContent content="模型回答没有内联引用编号。" citations={[citation]} messageId={102} onSelectCitation={onSelectCitation} />);
+
+    expect(screen.getByText('引用来源')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '引用 1' }));
+    expect(onSelectCitation).toHaveBeenCalledWith(citation);
+  });
 });

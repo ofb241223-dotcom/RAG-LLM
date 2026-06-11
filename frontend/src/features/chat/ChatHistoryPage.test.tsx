@@ -66,7 +66,10 @@ describe('ChatHistoryPage', () => {
 
     await screen.findByText('Transformer 架构详解与注意力机制');
     fireEvent.click(screen.getByRole('button', { name: '删除' }));
-    fireEvent.click(await screen.findByRole('button', { name: '确认删除' }));
+    const dialog = await screen.findByRole('dialog', { name: '删除对话' });
+    expect(dialog).toHaveClass('plain-dialog');
+    expect(within(dialog).getByText('确认删除当前对话“Transformer 架构详解与注意力机制”吗？删除后无法从列表恢复。')).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('button', { name: '确认删除' }));
 
     await waitFor(() => {
       expect(chatApi.deleteSession).toHaveBeenCalledWith(11);

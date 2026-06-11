@@ -305,7 +305,7 @@ export function ChatHistoryPage({ chatApi = defaultChatApi, initialDocumentId }:
                 <span>
                   <strong>{session.title}</strong>
                   <small>
-                    {session.messageCount} 条消息 · 张同学
+                    {session.messageCount} 条消息 · 科大人
                   </small>
                 </span>
                 <time>{formatDateTime(session.updatedAt)}</time>
@@ -346,10 +346,10 @@ export function ChatHistoryPage({ chatApi = defaultChatApi, initialDocumentId }:
               const isAssistant = message.role === 'ASSISTANT';
               return (
                 <article className={isAssistant ? 'history-message assistant' : 'history-message user'} key={message.id}>
-                  <div className="history-message-avatar">{isAssistant ? 'AI' : '张'}</div>
+                  <div className="history-message-avatar">{isAssistant ? 'AI' : '科'}</div>
                   <div className="history-message-body">
                     <div className="history-message-meta">
-                      <strong>{isAssistant ? 'RAG 助手' : '张同学'}</strong>
+                      <strong>{isAssistant ? 'RAG 助手' : '科大人'}</strong>
                       <span>{formatDateTime(message.createdAt)}</span>
                     </div>
                     {isAssistant ? (
@@ -377,7 +377,7 @@ export function ChatHistoryPage({ chatApi = defaultChatApi, initialDocumentId }:
 
       {dialog ? (
         <div className="dialog-backdrop" role="presentation">
-          <section aria-labelledby="chat-dialog-title" aria-modal="true" className="confirm-dialog" role="dialog">
+          <section aria-labelledby="chat-dialog-title" aria-modal="true" className="confirm-dialog plain-dialog" role="dialog">
             <div className="confirm-dialog-content">
               <h2 id="chat-dialog-title">
                 {dialog === 'help' ? '使用说明' : dialog === 'trash' ? '回收站' : dialog === 'delete' ? '删除对话' : '重命名对话'}

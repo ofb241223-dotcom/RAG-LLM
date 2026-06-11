@@ -282,6 +282,8 @@ export function DocumentsPage({ documentsApi = defaultDocumentsApi, onNavigate, 
             <option value="TXT">TXT</option>
             <option value="DOCX">DOCX</option>
             <option value="DOC">DOC</option>
+            <option value="XLSX">XLSX</option>
+            <option value="XLS">XLS</option>
           </select>
         </label>
         <label>

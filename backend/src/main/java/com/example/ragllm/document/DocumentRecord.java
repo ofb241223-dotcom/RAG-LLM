@@ -94,6 +94,24 @@ public record DocumentRecord(
         );
     }
 
+    public DocumentRecord embedding(Instant now) {
+        return new DocumentRecord(
+                id,
+                originalFilename,
+                format,
+                source,
+                DocumentProcessingStatus.EMBEDDING,
+                sizeBytes,
+                storagePath,
+                ragDocumentId,
+                chunkCount,
+                vectorCount,
+                null,
+                uploadedAt,
+                now
+        );
+    }
+
     public DocumentRecord ready(RagIngestResponse response, Instant now) {
         return new DocumentRecord(
                 id,

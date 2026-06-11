@@ -161,7 +161,7 @@ class JdbcSettingsRepository implements SettingsRepository {
                 true,
                 true,
                 now,
-                "张同学"
+                "科大人"
         );
     }
 

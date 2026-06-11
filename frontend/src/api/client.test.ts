@@ -211,6 +211,22 @@ describe('apiRequest', () => {
     expect(xhr.send).toHaveBeenCalledTimes(1);
   });
 
+  it('uses the backend JSON message when XHR upload is rejected', async () => {
+    vi.stubGlobal('XMLHttpRequest', MockXMLHttpRequest);
+
+    const uploadPromise = documentsApi.upload(new File(['pdf'], 'oversized.pdf'));
+    const xhr = MockXMLHttpRequest.instances[0];
+    xhr.status = 413;
+    xhr.responseText = JSON.stringify({ message: 'Maximum upload size exceeded' });
+    xhr.onload?.();
+
+    await expect(uploadPromise).rejects.toMatchObject({
+      name: 'ApiError',
+      status: 413,
+      message: 'Maximum upload size exceeded',
+    });
+  });
+
   it('aborts XHR upload when the abort signal is cancelled', async () => {
     vi.stubGlobal('XMLHttpRequest', MockXMLHttpRequest);
     const controller = new AbortController();

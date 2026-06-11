@@ -10,6 +10,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
+import java.util.concurrent.Executor;
 import com.example.ragllm.settings.SettingsService;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
@@ -27,19 +28,28 @@ public class DocumentService {
     private final RagServiceClient ragServiceClient;
     private final Clock clock;
     private final SettingsService settingsService;
+    private final DocumentActivityRepository activityRepository;
+    private final DocumentProcessingStepRepository processingStepRepository;
+    private final Executor documentProcessingExecutor;
 
     public DocumentService(
             DocumentRepository repository,
             FileDocumentStorage storage,
             RagServiceClient ragServiceClient,
             Clock clock,
-            SettingsService settingsService
+            SettingsService settingsService,
+            DocumentActivityRepository activityRepository,
+            DocumentProcessingStepRepository processingStepRepository,
+            Executor documentProcessingExecutor
     ) {
         this.repository = repository;
         this.storage = storage;
         this.ragServiceClient = ragServiceClient;
         this.clock = clock;
         this.settingsService = settingsService;
+        this.activityRepository = activityRepository;
+        this.processingStepRepository = processingStepRepository;
+        this.documentProcessingExecutor = documentProcessingExecutor;
     }
 
     public DocumentDto upload(MultipartFile file) {
@@ -58,12 +68,14 @@ public class DocumentService {
         try {
             Path storagePath = storage.store(file, record.id(), originalFilename);
             record = repository.save(record.withStoragePath(storagePath.toString(), clock.instant()));
+            activityRepository.save(DocumentActivityRecord.uploaded(record.originalFilename(), record.uploadedAt()));
+            processingStepRepository.initializeForUpload(record, clock.instant());
         } catch (IOException exception) {
             repository.deleteById(record.id());
             throw ApiException.internal("Failed to store uploaded file");
         }
 
-        return ingest(record.id());
+        return startProcessing(record.id(), false);
     }
 
     public DocumentPageDto list(int page, int size, DocumentSearchCriteria criteria) {
@@ -87,6 +99,7 @@ public class DocumentService {
                 .filter(record -> record.status() == DocumentProcessingStatus.READY)
                 .count();
         long vectorCount = records.stream()
+                .filter(record -> record.status() == DocumentProcessingStatus.READY)
                 .map(DocumentRecord::vectorCount)
                 .filter(count -> count != null)
                 .mapToLong(Integer::longValue)
@@ -127,20 +140,88 @@ public class DocumentService {
     }
 
     public DocumentDto ingest(Long id) {
+        return startProcessing(id, true);
+    }
+
+    public List<DocumentProcessingStepDto> processingSteps(Long id) {
+        findRecord(id);
+        return processingStepRepository.findByDocumentId(id).stream()
+                .map(DocumentProcessingStepDto::from)
+                .toList();
+    }
+
+    private DocumentDto startProcessing(Long id, boolean resetSteps) {
+        DocumentRecord record = repository.save(findRecord(id).parsing(clock.instant()));
+        if (resetSteps) {
+            processingStepRepository.resetForProcessing(record, clock.instant());
+        }
+        documentProcessingExecutor.execute(() -> processDocument(id));
+        return DocumentDto.from(record);
+    }
+
+    private void processDocument(Long id) {
         DocumentRecord record = repository.save(findRecord(id).parsing(clock.instant()));
         try {
-            RagIngestResponse response = ragServiceClient.ingest(RagIngestRequest.from(record), settingsService.currentRuntimeConfig());
-            return DocumentDto.from(repository.save(record.ready(response, clock.instant())));
+            RagIngestResponse response = ragServiceClient.ingestWithProgress(
+                    RagIngestRequest.from(record),
+                    settingsService.currentRuntimeConfig(),
+                    event -> handleIngestEvent(id, event)
+            );
+            repository.save(findRecord(id).ready(response, clock.instant()));
         } catch (RagServiceException exception) {
-            return DocumentDto.from(repository.save(record.failed(exception.getMessage(), clock.instant())));
+            processingStepRepository.markFailed(id, failedStep(findRecord(id)), exception.getMessage(), clock.instant());
+            repository.save(findRecord(id).failed(exception.getMessage(), clock.instant()));
         }
+    }
+
+    private void handleIngestEvent(Long id, RagIngestEvent event) {
+        String stage = event.stage() == null ? "" : event.stage().toLowerCase(Locale.ROOT);
+        Instant now = clock.instant();
+        switch (stage) {
+            case "extract" -> {
+                processingStepRepository.markComplete(id, DocumentProcessingStepDefinition.EXTRACT, detailOr(event, "文本提取完成"), now);
+                processingStepRepository.markActive(id, DocumentProcessingStepDefinition.SPLIT, now);
+            }
+            case "split" -> {
+                processingStepRepository.markComplete(id, DocumentProcessingStepDefinition.SPLIT, detailOr(event, "文本分块完成"), now);
+                processingStepRepository.markActive(id, DocumentProcessingStepDefinition.VECTOR, now);
+                repository.save(findRecord(id).embedding(now));
+            }
+            case "vector" -> {
+                processingStepRepository.markComplete(id, DocumentProcessingStepDefinition.VECTOR, detailOr(event, "向量化处理完成"), now);
+                processingStepRepository.markActive(id, DocumentProcessingStepDefinition.INDEX, now);
+            }
+            case "index" -> {
+                processingStepRepository.markComplete(id, DocumentProcessingStepDefinition.INDEX, detailOr(event, "索引构建完成"), now);
+                processingStepRepository.markActive(id, DocumentProcessingStepDefinition.STORED, now);
+            }
+            case "done" -> {
+                processingStepRepository.markComplete(id, DocumentProcessingStepDefinition.STORED, "向量已存储并可检索", now);
+            }
+            default -> {
+                // Ignore unknown progress events for forward compatibility.
+            }
+        }
+    }
+
+    private String detailOr(RagIngestEvent event, String fallback) {
+        return StringUtils.hasText(event.detail()) ? event.detail() : fallback;
+    }
+
+    private DocumentProcessingStepDefinition failedStep(DocumentRecord record) {
+        if (record.status() == DocumentProcessingStatus.EMBEDDING) {
+            return DocumentProcessingStepDefinition.VECTOR;
+        }
+        return DocumentProcessingStepDefinition.EXTRACT;
     }
 
     public void delete(Long id) {
         DocumentRecord record = findRecord(id);
         deleteRagDocument(record);
         deleteStoredFile(record);
+        ensureUploadActivity(record);
         repository.deleteById(id);
+        activityRepository.save(DocumentActivityRecord.deleted(record.originalFilename(), clock.instant()));
     }
 
     public BatchDeleteResultDto batchDelete(BatchDeleteRequest request) {
@@ -250,6 +331,13 @@ public class DocumentService {
             ragServiceClient.deleteDocument(documentId, settingsService.currentRuntimeConfig());
         } catch (RagServiceException exception) {
             throw ApiException.badGateway("RAG service delete failed: " + exception.getMessage());
+        }
+    }
+
+    private void ensureUploadActivity(DocumentRecord record) {
+        DocumentActivityRecord uploadedActivity = DocumentActivityRecord.uploaded(record.originalFilename(), record.uploadedAt());
+        if (!activityRepository.exists(uploadedActivity)) {
+            activityRepository.save(uploadedActivity);
         }
     }
 

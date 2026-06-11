@@ -72,6 +72,11 @@ public class DocumentController {
         return documentService.chunks(id);
     }
 
+    @GetMapping("/{id}/processing")
+    public List<DocumentProcessingStepDto> processing(@PathVariable Long id) {
+        return documentService.processingSteps(id);
+    }
+
     @GetMapping("/{id}/download")
     public ResponseEntity<Resource> download(@PathVariable Long id) {
         DocumentService.DownloadedDocument document = documentService.download(id);

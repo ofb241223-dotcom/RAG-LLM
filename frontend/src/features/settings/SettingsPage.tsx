@@ -12,7 +12,6 @@ import {
   type SettingsUpdateRequest,
   type VectorStoreSettings,
 } from '../../api/settings';
-import { formatDateTime } from '../chat/chatFormat';
 
 type SettingsTab = 'llm' | 'embedding' | 'rag';
 type TestKind = 'status' | 'llm' | 'embedding';
@@ -586,12 +585,6 @@ export function SettingsPage({ settingsApi = defaultSettingsApi }: SettingsPageP
                 </dd>
               </div>
             </dl>
-            <footer>
-              <span>最后保存时间</span>
-              <strong>{formatDateTime(form.updatedAt)}</strong>
-              <span>保存人</span>
-              <strong>{form.updatedBy}</strong>
-            </footer>
           </section>
 
           <section className="settings-summary-card settings-security-card">

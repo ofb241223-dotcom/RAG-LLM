@@ -42,7 +42,7 @@ describe('DocumentTable', () => {
     expect(screen.getByText('正在加载文档...')).toBeInTheDocument();
 
     rerender(<DocumentTable documents={[]} />);
-    expect(screen.getByText('暂无文档，请先上传 PDF、TXT 或 Word。')).toBeInTheDocument();
+    expect(screen.getByText('暂无文档，请先上传 PDF、TXT、Word 或 Excel。')).toBeInTheDocument();
 
     rerender(<DocumentTable documents={[]} error="请求失败" onRefresh={() => undefined} />);
     expect(screen.getByText('请求失败')).toBeInTheDocument();
@@ -60,7 +60,7 @@ describe('DocumentTable', () => {
 
     const failedRow = screen.getByTestId('document-row-3');
     expect(within(failedRow).getByText('失败')).toHaveClass('status-badge', 'failed');
-    expect(within(failedRow).getByText('empty document')).toBeInTheDocument();
+    expect(within(failedRow).queryByText('empty document')).not.toBeInTheDocument();
   });
 
   it('opens document detail from the management row without toggling selection', () => {

@@ -1,4 +1,5 @@
 from typing import Iterable
+import json
 
 import httpx
 import pytest
@@ -41,7 +42,7 @@ async def test_status_reports_runtime_configuration(tmp_path) -> None:
         response = await client.get("/status")
 
     assert response.status_code == 200
-    assert response.json()["supported_formats"] == ["PDF", "TXT", "DOCX", "DOC"]
+    assert response.json()["supported_formats"] == ["PDF", "TXT", "DOCX", "DOC", "XLSX", "XLS"]
     assert response.json()["embedding_model"] == "fake-embedding"
     assert response.json()["llm_model"] == "fake-llm"
     assert response.json()["vector_store"]["collection"] == "rag_documents_v1"
@@ -99,6 +100,37 @@ async def test_ingest_qa_and_delete_round_trip_with_fake_providers(tmp_path) -> 
 
 
 @pytest.mark.anyio
+async def test_ingest_events_streams_processing_progress_and_persists_chunks(tmp_path) -> None:
+    app = create_app(
+        chroma_persist_dir=tmp_path,
+        embedding_provider=FakeEmbeddingProvider(),
+        llm_provider=FakeLlmProvider(),
+    )
+    transport = httpx.ASGITransport(app=app)
+
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.post(
+            "/documents/ingest/events",
+            data={"document_id": "doc-events"},
+            files={"file": ("progress.txt", "第一段内容。\n第二段说明实时处理进度。", "text/plain")},
+        )
+        chunks = await client.post("/documents/doc-events/chunks", json={})
+
+    assert response.status_code == 200
+    events = [json.loads(line) for line in response.text.strip().splitlines()]
+    assert [event["stage"] for event in events] == ["extract", "split", "vector", "index", "done"]
+    assert events[0]["characters"] > 0
+    assert events[1]["chunk_count"] == 1
+    assert events[-1]["document_id"] == "doc-events"
+    assert events[-1]["chunk_count"] == 1
+    assert events[-1]["vector_count"] == 1
+
+    assert chunks.status_code == 200
+    assert chunks.json()[0]["document_id"] == "doc-events"
+    assert "实时处理进度" in chunks.json()[0]["text"]
+
+
+@pytest.mark.anyio
 async def test_qa_accepts_numeric_document_ids_from_backend(tmp_path) -> None:
     app = create_app(
         chroma_persist_dir=tmp_path,
@@ -152,6 +184,45 @@ async def test_reingest_replaces_old_chunks_for_same_document_id(tmp_path) -> No
 
 
 @pytest.mark.anyio
+async def test_ingest_accepts_xlsx_workbook(tmp_path) -> None:
+    embedding_provider = FakeEmbeddingProvider()
+    app = create_app(
+        chroma_persist_dir=tmp_path,
+        embedding_provider=embedding_provider,
+        llm_provider=FakeLlmProvider(),
+        settings=Settings(_env_file=None, mineru_enabled=False),
+    )
+    transport = httpx.ASGITransport(app=app)
+    from openpyxl import Workbook
+
+    workbook = Workbook()
+    worksheet = workbook.active
+    worksheet.title = "名单"
+    worksheet.append(["姓名", "状态"])
+    worksheet.append(["张三", "推荐"])
+    buffer = __import__("io").BytesIO()
+    workbook.save(buffer)
+
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.post(
+            "/documents/ingest",
+            data={"document_id": "sheet-1"},
+            files={
+                "file": (
+                    "table.xlsx",
+                    buffer.getvalue(),
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                )
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.json()["format"] == "XLSX"
+    assert response.json()["chunk_count"] == 1
+    assert "姓名 | 状态" in embedding_provider.calls[0][0][0]
+
+
+@pytest.mark.anyio
 async def test_ingest_rejects_unsupported_format(tmp_path) -> None:
     app = create_app(
         chroma_persist_dir=tmp_path,
@@ -163,7 +234,7 @@ async def test_ingest_rejects_unsupported_format(tmp_path) -> None:
     async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
         response = await client.post(
             "/documents/ingest",
-            files={"file": ("table.xlsx", b"data", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+            files={"file": ("slides.pptx", b"data", "application/vnd.openxmlformats-officedocument.presentationml.presentation")},
         )
 
     assert response.status_code == 400

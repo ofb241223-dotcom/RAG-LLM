@@ -15,6 +15,32 @@ CREATE TABLE IF NOT EXISTS documents (
   PRIMARY KEY (id)
 );
 
+CREATE TABLE IF NOT EXISTS document_activity_events (
+  id BIGINT NOT NULL AUTO_INCREMENT,
+  label VARCHAR(1024) NOT NULL,
+  tone VARCHAR(32) NOT NULL,
+  occurred_at TIMESTAMP(6) NOT NULL,
+  PRIMARY KEY (id),
+  INDEX idx_document_activity_occurred (occurred_at)
+);
+
+CREATE TABLE IF NOT EXISTS document_processing_steps (
+  id BIGINT NOT NULL AUTO_INCREMENT,
+  document_id BIGINT NOT NULL,
+  step_key VARCHAR(32) NOT NULL,
+  label VARCHAR(64) NOT NULL,
+  detail VARCHAR(1024) NOT NULL,
+  state VARCHAR(32) NOT NULL,
+  occurred_at TIMESTAMP(6),
+  position INT NOT NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_document_processing_step (document_id, step_key),
+  INDEX idx_document_processing_document (document_id, position),
+  CONSTRAINT fk_document_processing_document
+    FOREIGN KEY (document_id) REFERENCES documents(id)
+    ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS chat_sessions (
   id BIGINT NOT NULL AUTO_INCREMENT,
   document_id BIGINT NOT NULL,

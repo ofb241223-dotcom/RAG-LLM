@@ -20,6 +20,7 @@ interface DocumentTableProps {
 function getFileTone(format: DocumentDto['format']): string {
   if (format === 'PDF') return 'pdf';
   if (format === 'TXT') return 'txt';
+  if (format === 'XLSX' || format === 'XLS') return 'excel';
   return 'word';
 }
 
@@ -62,7 +63,7 @@ export function DocumentTable({
   }
 
   if (documents.length === 0) {
-    return <div className="table-state empty-state">暂无文档，请先上传 PDF、TXT 或 Word。</div>;
+    return <div className="table-state empty-state">暂无文档，请先上传 PDF、TXT、Word 或 Excel。</div>;
   }
 
   if (variant === 'management') {
@@ -113,10 +114,9 @@ export function DocumentTable({
               <span>{formatDateTime(document.uploadedAt)}</span>
               <span>
                 <mark className={`status-badge ${getStatusClass(document.status)}`}>{getStatusLabel(document.status)}</mark>
-                {document.errorMessage ? <small className="row-error">{document.errorMessage}</small> : null}
               </span>
-              <span>{document.chunkCount ?? '-'}</span>
-              <span>{document.vectorCount ?? '-'}</span>
+              <span>{document.status === 'READY' ? document.chunkCount ?? '-' : '-'}</span>
+              <span>{document.status === 'READY' ? document.vectorCount ?? '-' : '-'}</span>
               <span className="row-actions">
                 <button aria-label={`查看处理详情 ${document.originalFilename}`} className="icon-button" onClick={() => onOpenDetail?.(document)} type="button">
                   <Eye size={15} />
@@ -159,9 +159,8 @@ export function DocumentTable({
           <span>{formatDateTime(document.updatedAt || document.uploadedAt)}</span>
           <span>
             <mark className={`status-badge ${getStatusClass(document.status)}`}>{getStatusLabel(document.status)}</mark>
-            {document.errorMessage ? <small className="row-error">{document.errorMessage}</small> : null}
           </span>
-          <span>{document.chunkCount ?? '-'}</span>
+          <span>{document.status === 'READY' ? document.chunkCount ?? '-' : '-'}</span>
         </div>
       ))}
     </div>

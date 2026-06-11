@@ -27,6 +27,8 @@ describe('App shell', () => {
     expect(screen.getByRole('img', { name: 'RAG 智能文档问答 logo' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: /文档工作台/ })).toBeInTheDocument();
     expect(screen.queryByLabelText('通知')).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText('搜索文档、对话或关键词...')).not.toBeInTheDocument();
+    expect(screen.getByText('科大人')).toBeInTheDocument();
 
     const navigation = screen.getByRole('navigation', { name: '主导航' });
     expect(within(navigation).getByText('工作台')).toBeInTheDocument();
@@ -41,9 +43,10 @@ describe('App shell', () => {
     expect(screen.getByText('1,245')).toBeInTheDocument();
     expect(screen.getByText('当前索引')).toBeInTheDocument();
     expect(screen.queryByText('存储使用量')).not.toBeInTheDocument();
-    expect(screen.getByText('↑ 12.5%')).toHaveClass('trend-value');
-    expect(screen.getByText('↑ 18.3%')).toHaveClass('trend-value');
-    expect(screen.getByText('PDF / TXT / Word')).toBeInTheDocument();
+    expect(screen.queryByText('较上周')).not.toBeInTheDocument();
+    expect(screen.queryByText('↑ 12.5%')).not.toBeInTheDocument();
+    expect(screen.queryByText('↑ 18.3%')).not.toBeInTheDocument();
+    expect(screen.getByText('PDF / TXT / Word / Excel')).toBeInTheDocument();
 
     expect(screen.getByText('《深度学习原理与实践》第3章.pdf')).toBeInTheDocument();
     expect(screen.getByText('自然语言处理综述.docx')).toBeInTheDocument();
@@ -59,6 +62,8 @@ describe('App shell', () => {
     expect(within(processFlow).getAllByTestId('process-icon')).toHaveLength(5);
 
     expect(screen.getByText('快捷操作')).toBeInTheDocument();
+    expect(screen.getByText('查看向量索引')).toBeInTheDocument();
+    expect(screen.queryByText('查看向量库')).not.toBeInTheDocument();
     expect(screen.getByText('最近动态')).toBeInTheDocument();
 
     await waitFor(() => {

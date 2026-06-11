@@ -8,6 +8,7 @@ import com.example.ragllm.settings.RuntimeModelConfig;
 import com.example.ragllm.settings.SettingsService;
 import com.example.ragllm.settings.SettingsTestResponse;
 import java.util.List;
+import java.util.function.Consumer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Clock;
@@ -29,6 +30,11 @@ class DocumentServiceTest {
         RagServiceClient failingClient = new RagServiceClient() {
             @Override
             public RagIngestResponse ingest(RagIngestRequest request, RuntimeModelConfig runtimeConfig) {
+                throw new RagServiceException("rag unavailable");
+            }
+
+            @Override
+            public RagIngestResponse ingestWithProgress(RagIngestRequest request, RuntimeModelConfig runtimeConfig, Consumer<RagIngestEvent> eventConsumer) {
                 throw new RagServiceException("rag unavailable");
             }
 
@@ -83,7 +89,10 @@ class DocumentServiceTest {
                 storage,
                 failingClient,
                 Clock.fixed(Instant.parse("2026-06-10T10:15:30Z"), ZoneOffset.UTC),
-                settingsService
+                settingsService,
+                new InMemoryDocumentActivityRepository(),
+                new InMemoryDocumentProcessingStepRepository(),
+                Runnable::run
         );
         MockMultipartFile file = new MockMultipartFile(
                 "file",
@@ -94,8 +103,7 @@ class DocumentServiceTest {
 
         DocumentDto dto = service.upload(file);
 
-        assertThat(dto.status()).isEqualTo(DocumentProcessingStatus.FAILED);
-        assertThat(dto.errorMessage()).contains("rag unavailable");
+        assertThat(dto.status()).isEqualTo(DocumentProcessingStatus.PARSING);
         DocumentRecord stored = repository.findById(dto.id()).orElseThrow();
         assertThat(stored.status()).isEqualTo(DocumentProcessingStatus.FAILED);
         assertThat(stored.errorMessage()).contains("rag unavailable");

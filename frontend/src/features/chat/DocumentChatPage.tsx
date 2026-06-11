@@ -1,5 +1,9 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { Bot, ChevronRight, Eraser, FileSearch, SendHorizontal, Settings2, Target } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import rehypeKatex from 'rehype-katex';
+import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
 import {
   chatApi as defaultChatApi,
   type ChatApi,
@@ -11,7 +15,7 @@ import {
 import { settingsApi as defaultSettingsApi, type SettingsResponse } from '../../api/settings';
 import { AnswerContent } from './components/AnswerContent';
 import { DocumentFileIcon } from './components/DocumentFileIcon';
-import { formatBytes, formatDateTime, getSessionCitations, latestAssistantMessage, titleFromQuestion, toSessionSummary } from './chatFormat';
+import { formatBytes, formatDateTime, latestAssistantMessage, titleFromQuestion, toSessionSummary } from './chatFormat';
 
 interface DocumentChatPageProps {
   chatApi?: ChatApi;
@@ -27,10 +31,16 @@ interface StreamingDraft {
   startedAt: string;
 }
 
-const citationTitles = ['3.2 多头注意力机制', '3.5 位置编码', '3.3 前馈神经网络', '3.4 残差连接与层归一化', '3.1 Transformer 整体结构'];
+function citationTitle(index: number): string {
+  return `引用片段 [${index + 1}]`;
+}
 
-function citationTitle(citation: ChatCitationDto, index: number): string {
-  return citationTitles[index] ?? `引用片段 ${citation.markerIndex}`;
+function CitationMarkdown({ text }: { text: string }) {
+  return (
+    <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
+      {text}
+    </ReactMarkdown>
+  );
 }
 
 export function DocumentChatPage({ chatApi = defaultChatApi, settingsApi = defaultSettingsApi, initialDocumentId, onOpenSettings }: DocumentChatPageProps) {
@@ -42,6 +52,8 @@ export function DocumentChatPage({ chatApi = defaultChatApi, settingsApi = defau
   const [streamingDraft, setStreamingDraft] = useState<StreamingDraft | null>(null);
   const [question, setQuestion] = useState('');
   const [selectedCitationKey, setSelectedCitationKey] = useState<string | null>(null);
+  const [citationMessageId, setCitationMessageId] = useState<number | null>(null);
+  const [expandedCitation, setExpandedCitation] = useState<ChatCitationDto | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -108,10 +120,13 @@ export function DocumentChatPage({ chatApi = defaultChatApi, settingsApi = defau
         if (result[0]) {
           const detail = await chatApi.getSession(result[0].id);
           if (!alive) return;
+          const latestAssistant = latestAssistantMessage(detail.messages);
           setActiveSession(detail);
-          setSelectedCitationKey(latestAssistantMessage(detail.messages)?.citations[0]?.key ?? null);
+          setCitationMessageId(latestAssistant?.id ?? null);
+          setSelectedCitationKey(latestAssistant?.citations[0]?.key ?? null);
         } else {
           setActiveSession(null);
+          setCitationMessageId(null);
           setSelectedCitationKey(null);
         }
       } catch (err) {
@@ -128,7 +143,12 @@ export function DocumentChatPage({ chatApi = defaultChatApi, settingsApi = defau
   }, [chatApi, selectedDocumentId]);
 
   const selectedDocument = useMemo(() => documents.find((document) => document.id === selectedDocumentId) ?? null, [documents, selectedDocumentId]);
-  const citations = useMemo(() => getSessionCitations(activeSession), [activeSession]);
+  const citationMessage = useMemo(() => {
+    const assistantMessages = activeSession?.messages.filter((message) => message.role === 'ASSISTANT' && message.citations.length > 0) ?? [];
+    const fallbackMessage = assistantMessages.length > 0 ? assistantMessages[assistantMessages.length - 1] : null;
+    return assistantMessages.find((message) => message.id === citationMessageId) ?? fallbackMessage;
+  }, [activeSession, citationMessageId]);
+  const citations: ChatCitationDto[] = citationMessage?.citations ?? [];
   const topK = settings?.rag.topK ?? 5;
   const llmName = settings?.llm.model.replace(/:free$/u, '') ?? '加载中';
   const embeddingName = settings?.embedding.model.replace(/:free$/u, '') ?? '加载中';
@@ -145,6 +165,8 @@ export function DocumentChatPage({ chatApi = defaultChatApi, settingsApi = defau
     if (!selectedDocumentId) return null;
     const detail = await chatApi.createSession({ documentId: selectedDocumentId, title });
     setActiveSession(detail);
+    setCitationMessageId(null);
+    setSelectedCitationKey(null);
     setSessions((current) => [toSessionSummary(detail), ...current.filter((session) => session.id !== detail.id)]);
     return detail;
   };
@@ -171,9 +193,11 @@ export function DocumentChatPage({ chatApi = defaultChatApi, settingsApi = defau
       } else {
         detail = await chatApi.sendMessage(session.id, { question: trimmedQuestion });
       }
+      const latestAssistant = latestAssistantMessage(detail.messages);
       setActiveSession(detail);
       setSessions((current) => [toSessionSummary(detail), ...current.filter((item) => item.id !== detail.id)]);
-      setSelectedCitationKey(latestAssistantMessage(detail.messages)?.citations[0]?.key ?? null);
+      setCitationMessageId(latestAssistant?.id ?? null);
+      setSelectedCitationKey(latestAssistant?.citations[0]?.key ?? null);
       setQuestion('');
       setStreamingDraft(null);
     } catch (err) {
@@ -189,6 +213,8 @@ export function DocumentChatPage({ chatApi = defaultChatApi, settingsApi = defau
     setActiveSession(null);
     setQuestion('');
     setSelectedCitationKey(null);
+    setCitationMessageId(null);
+    setExpandedCitation(null);
   };
 
   return (
@@ -273,7 +299,15 @@ export function DocumentChatPage({ chatApi = defaultChatApi, settingsApi = defau
                       {isAssistant ? <em>基于检索到的文档生成</em> : null}
                     </div>
                     {isAssistant ? (
-                      <AnswerContent content={message.content} citations={message.citations} messageId={message.id} onSelectCitation={(citation) => setSelectedCitationKey(citation.key)} />
+                      <AnswerContent
+                        content={message.content}
+                        citations={message.citations}
+                        messageId={message.id}
+                        onSelectCitation={(citation) => {
+                          setCitationMessageId(message.id);
+                          setSelectedCitationKey(citation.key);
+                        }}
+                      />
                     ) : (
                       <p>{message.content}</p>
                     )}
@@ -333,7 +367,7 @@ export function DocumentChatPage({ chatApi = defaultChatApi, settingsApi = defau
         <aside className="document-citation-panel" aria-label="引用片段列表">
           <div className="panel-header">
             <h2>引用片段</h2>
-            <small>检索结果 Top-K</small>
+            <small>{citationMessage ? `回答 #${citationMessage.id} · Top-K` : '检索结果 Top-K'}</small>
           </div>
           <div className="document-citation-list">
             {citations.length === 0 ? <p className="table-state">暂无引用。提交问题后会显示 Top-K 检索片段。</p> : null}
@@ -342,15 +376,20 @@ export function DocumentChatPage({ chatApi = defaultChatApi, settingsApi = defau
                 className={citation.key === selectedCitationKey ? 'document-citation-card selected' : 'document-citation-card'}
                 key={citation.key}
                 type="button"
-                onClick={() => setSelectedCitationKey(citation.key)}
+                onClick={() => {
+                  setSelectedCitationKey(citation.key);
+                  setExpandedCitation(citation);
+                }}
               >
                 <span className={`citation-rank rank-${index + 1}`}>{index + 1}</span>
                 <span className="document-citation-body">
-                  <strong>{citationTitle(citation, index)}</strong>
-                  <em>相似度 {citation.score.toFixed(2)}</em>
-                  <small>{citation.text}</small>
+                  <strong>{citationTitle(index)}</strong>
+                  <em>相似度 {(citation.score * 100).toFixed(0)}% · score {citation.score.toFixed(2)}</em>
+                  <span className="citation-preview markdown-body">
+                    <CitationMarkdown text={citation.text} />
+                  </span>
                   <span>
-                    来源：第 {citation.page ?? 98 + index * 3} 页 <b>Chunk: {citation.chunkId}</b>
+                    来源：{citation.page ? `第 ${citation.page} 页` : citation.filename} <b>Chunk: {citation.chunkId}</b>
                   </span>
                 </span>
               </button>
@@ -358,6 +397,30 @@ export function DocumentChatPage({ chatApi = defaultChatApi, settingsApi = defau
           </div>
         </aside>
       </div>
+
+      {expandedCitation ? (
+        <div className="dialog-backdrop" role="presentation">
+          <section aria-labelledby="citation-dialog-title" aria-modal="true" className="confirm-dialog citation-dialog plain-dialog" role="dialog">
+            <div className="confirm-dialog-content">
+              <h2 id="citation-dialog-title">
+                {citationTitle(Math.max(0, citations.findIndex((citation) => citation.key === expandedCitation.key)))}
+              </h2>
+              <p>
+                相似度 {(expandedCitation.score * 100).toFixed(0)}% · score {expandedCitation.score.toFixed(2)} ·{' '}
+                {expandedCitation.page ? `第 ${expandedCitation.page} 页` : expandedCitation.filename} · Chunk: {expandedCitation.chunkId}
+              </p>
+              <div className="citation-dialog-text markdown-body">
+                <CitationMarkdown text={expandedCitation.text} />
+              </div>
+            </div>
+            <div className="dialog-actions">
+              <button className="primary-button" type="button" onClick={() => setExpandedCitation(null)}>
+                关闭
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
     </section>
   );
 }

@@ -36,6 +36,16 @@ class IngestResponse(BaseModel):
     source_name: str
 
 
+class IngestEventResponse(BaseModel):
+    stage: str
+    status: str = "complete"
+    detail: str
+    document_id: str | None = None
+    chunk_count: int | None = None
+    vector_count: int | None = None
+    characters: int | None = None
+
+
 class DeleteResponse(BaseModel):
     document_id: str
     deleted: bool

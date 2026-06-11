@@ -85,6 +85,8 @@ describe('DocumentsPage', () => {
     expect(screen.getByText('352')).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText('文件类型'), { target: { value: 'PDF' } });
+    expect(screen.getByRole('option', { name: 'XLSX' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'XLS' })).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('解析状态'), { target: { value: 'READY' } });
     expect(screen.getByRole('option', { name: '需重新处理' })).toBeInTheDocument();
     expect(screen.queryByRole('option', { name: '本地导入' })).not.toBeInTheDocument();

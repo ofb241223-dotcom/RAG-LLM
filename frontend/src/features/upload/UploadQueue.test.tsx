@@ -58,6 +58,9 @@ describe('UploadQueue', () => {
 
     render(<UploadQueue api={api} pollIntervalMs={1500} />);
 
+    expect(screen.getByText('支持 PDF、TXT、DOCX、DOC、XLSX、XLS 格式，单个文件最大 200MB')).toBeInTheDocument();
+    expect(screen.getByLabelText('选择文件')).toHaveAttribute('accept', '.pdf,.txt,.doc,.docx,.xls,.xlsx');
+
     const file = new File(['hello'], '自然语言处理综述.docx', {
       type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     });

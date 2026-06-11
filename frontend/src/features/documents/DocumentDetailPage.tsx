@@ -16,11 +16,11 @@ import {
 } from 'lucide-react';
 import { documentsApi as defaultDocumentsApi, type DocumentsApi } from '../../api/documents';
 import { settingsApi as defaultSettingsApi, type SettingsResponse } from '../../api/settings';
-import type { DocumentChunkDto, DocumentDto, ProcessingStatus } from '../../types/document';
+import type { DocumentChunkDto, DocumentDto, DocumentProcessingStepDto } from '../../types/document';
 import { formatBytes, formatDateTime } from '../../utils/format';
-import { getStatusClass, getStatusLabel } from './status';
+import { getStatusClass, getStatusLabel, isTerminalStatus } from './status';
 
-type DetailApi = Pick<DocumentsApi, 'get' | 'chunks' | 'reprocess' | 'downloadUrl'>;
+type DetailApi = Pick<DocumentsApi, 'get' | 'chunks' | 'processing' | 'reprocess' | 'downloadUrl'>;
 
 interface DocumentDetailPageProps {
   documentId: number;
@@ -36,6 +36,7 @@ interface DetailStep {
   label: string;
   detail: string;
   time: string;
+  occurredAt?: string | null;
   icon: LucideIcon;
   state: 'complete' | 'active' | 'pending' | 'failed';
 }
@@ -55,19 +56,6 @@ interface PreviewChunk {
   overlap: number;
 }
 
-const statusRank: Record<ProcessingStatus, number> = {
-  UPLOADED: 1,
-  PARSING: 2,
-  EMBEDDING: 4,
-  READY: 6,
-  FAILED: 2,
-  REPROCESS_REQUIRED: 1,
-};
-
-function addSeconds(date: Date, seconds: number): Date {
-  return new Date(date.getTime() + seconds * 1000);
-}
-
 function formatClock(date: Date): string {
   return new Intl.DateTimeFormat('zh-CN', {
     hour: '2-digit',
@@ -81,6 +69,7 @@ function formatClock(date: Date): string {
 function getFileTone(format: DocumentDto['format']): string {
   if (format === 'PDF') return 'pdf';
   if (format === 'TXT') return 'txt';
+  if (format === 'XLSX' || format === 'XLS') return 'excel';
   return 'word';
 }
 
@@ -101,70 +90,79 @@ function getDisplayVectorCount(document: DocumentDto): number {
   return document.status === 'READY' ? getDisplayChunkCount(document) : 0;
 }
 
-function inferFailedStepRank(document: DocumentDto): number {
-  const message = document.errorMessage ?? '';
-  if (message.match(/api_key|dashscope|embedding|向量/i)) return 4;
-  if (getDisplayVectorCount(document) > 0) return 5;
-  if (getDisplayChunkCount(document) > 0) return 4;
-  return 2;
+const stepIcons: Record<string, LucideIcon> = {
+  upload: FileText,
+  extract: FileText,
+  split: Layers,
+  vector: Box,
+  index: SearchCheck,
+  stored: Database,
+};
+
+function mapProcessingSteps(steps: DocumentProcessingStepDto[]): DetailStep[] {
+  return steps.map((step) => ({
+    key: step.key,
+    label: step.label,
+    detail: step.detail,
+    time: step.occurredAt ? formatClock(new Date(step.occurredAt)) : '-',
+    occurredAt: step.occurredAt,
+    icon: stepIcons[step.key] ?? FileText,
+    state: step.state.toLowerCase() as DetailStep['state'],
+  }));
 }
 
-function buildProcessingSteps(document: DocumentDto, metrics?: { characters: number; chunkCount: number; vectorCount: number }): DetailStep[] {
-  const start = new Date(document.uploadedAt);
-  const done = document.updatedAt ? new Date(document.updatedAt) : addSeconds(start, 44);
-  const rank = statusRank[document.status];
-  const failedRank = document.status === 'FAILED' ? inferFailedStepRank(document) : undefined;
-  const chunkCount = metrics?.chunkCount ?? getDisplayChunkCount(document);
-  const vectorCount = metrics?.vectorCount ?? getDisplayVectorCount(document);
-  const characterCount = metrics?.characters ?? estimateCharacterCount(document);
-
+function buildFallbackSteps(document: DocumentDto): DetailStep[] {
   const definitions = [
-    { key: 'upload', label: '文件上传', detail: '文件上传成功', pendingDetail: '等待文件上传', offset: 0, icon: FileText, rank: 1 },
-    {
-      key: 'extract',
-      label: '文本提取',
-      detail: `已提取 ${characterCount.toLocaleString('zh-CN')} 个字符`,
-      pendingDetail: '等待提取文本内容',
-      offset: 4,
-      icon: FileText,
-      rank: 2,
-    },
-    {
-      key: 'split',
-      label: '文本分块',
-      detail: `已生成 ${chunkCount.toLocaleString('zh-CN')} 个文本块`,
-      pendingDetail: '等待文本分块',
-      offset: 9,
-      icon: Layers,
-      rank: 3,
-    },
-    {
-      key: 'vector',
-      label: '向量化处理',
-      detail: `已生成 ${Math.max(vectorCount, chunkCount).toLocaleString('zh-CN')} 个向量`,
-      pendingDetail: '等待生成向量',
-      offset: 27,
-      icon: Box,
-      rank: 4,
-    },
-    { key: 'index', label: '索引构建', detail: '索引构建完成', pendingDetail: '等待索引构建', offset: 41, icon: SearchCheck, rank: 5 },
-    { key: 'stored', label: '存储完成', detail: '向量已存储并可检索', pendingDetail: '等待存储完成', offset: 44, icon: Database, rank: 6 },
+    { key: 'upload', label: '文件上传', detail: '文件上传成功', pendingDetail: '等待文件上传', icon: FileText },
+    { key: 'extract', label: '文本提取', detail: '已完成', pendingDetail: '等待提取文本内容', icon: FileText },
+    { key: 'split', label: '文本分块', detail: '已完成', pendingDetail: '等待文本分块', icon: Layers },
+    { key: 'vector', label: '向量化处理', detail: '已完成', pendingDetail: '等待生成向量', icon: Box },
+    { key: 'index', label: '索引构建', detail: '索引构建完成', pendingDetail: '等待索引构建', icon: SearchCheck },
+    { key: 'stored', label: '存储完成', detail: '向量已存储并可检索', pendingDetail: '等待存储完成', icon: Database },
   ];
+  const activeKey = document.status === 'EMBEDDING' ? 'vector' : document.status === 'PARSING' ? 'extract' : 'upload';
+  const activeIndex = definitions.findIndex((step) => step.key === activeKey);
+  const failedIndex = document.status === 'FAILED' ? Math.max(activeIndex, 1) : -1;
 
-  return definitions.map(({ pendingDetail, ...step }) => {
-    const isFailed = failedRank === step.rank;
-    const isComplete = document.status === 'READY' || (failedRank ? step.rank < failedRank : rank > step.rank);
-    const isActive = document.status !== 'READY' && !failedRank && rank === step.rank;
-    const isPending = !isComplete && !isActive && !isFailed;
-    const time = isPending ? '-' : step.rank === 6 && document.status === 'READY' ? done : isFailed ? done : addSeconds(start, step.offset);
-
+  return definitions.map((step, index) => {
+    const isReady = document.status === 'READY';
+    const isFailed = failedIndex === index;
+    const isComplete = isReady || (failedIndex >= 0 ? index < failedIndex : index < activeIndex);
+    const isActive = !isReady && failedIndex < 0 && index === activeIndex;
+    const occurredAt = index === 0 ? document.uploadedAt : isReady || isFailed ? document.updatedAt : undefined;
     return {
-      ...step,
-      detail: isFailed ? document.errorMessage ?? '该阶段处理失败' : isPending ? pendingDetail : step.detail,
-      time: typeof time === 'string' ? time : formatClock(time),
+      key: step.key,
+      label: step.label,
+      detail: isFailed ? document.errorMessage ?? '处理失败' : isComplete ? step.detail : isActive ? getStatusLabel(document.status) : step.pendingDetail,
+      time: occurredAt ? formatClock(new Date(occurredAt)) : '-',
+      occurredAt,
+      icon: step.icon,
       state: isFailed ? 'failed' : isComplete ? 'complete' : isActive ? 'active' : 'pending',
     };
   });
+}
+
+function processingDuration(document: DocumentDto, steps: DetailStep[]): string {
+  if (!isTerminalStatus(document.status) || document.status === 'REPROCESS_REQUIRED') {
+    return '-';
+  }
+  const startAt = processingStartedAt(document, steps);
+  const finishedStep = [...steps].reverse().find((step) => step.state === 'complete' && step.occurredAt);
+  const end = new Date(finishedStep?.occurredAt ?? document.updatedAt).getTime();
+  const start = startAt.getTime();
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) {
+    return '-';
+  }
+  return `${Math.max(1, Math.round((end - start) / 1000))} 秒`;
+}
+
+function processingStartedAt(document: DocumentDto, steps: DetailStep[]): Date {
+  const firstProcessingStep = steps.find((step) => step.key !== 'upload' && step.occurredAt);
+  if (firstProcessingStep) {
+    return new Date(firstProcessingStep.occurredAt!);
+  }
+  const uploadStep = steps.find((step) => step.key === 'upload' && step.occurredAt);
+  return new Date(uploadStep?.occurredAt ?? document.uploadedAt);
 }
 
 function chunkId(chunk: DocumentChunkDto): string {
@@ -202,10 +200,21 @@ function vectorStoreLabel(type?: string): string {
 
 function inferEmbeddingDimension(model?: string): number | null {
   if (!model) return null;
+  if (model.includes('text-embedding-3-small')) return 1536;
+  if (model.includes('text-embedding-3-large')) return 3072;
   if (model.includes('gemini-embedding')) return 3072;
   if (model.includes('llama-nemotron-embed')) return 2048;
   if (model.includes('text-embedding-v4')) return 2048;
   return null;
+}
+
+function runtimeCollectionName(baseName: string, provider?: string, model?: string): string {
+  const namespace = `${provider ?? ''}_${model ?? ''}`
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/gu, '_')
+    .replace(/_+/gu, '_')
+    .replace(/^_+|_+$/gu, '');
+  return namespace ? `${baseName}__${namespace}` : baseName;
 }
 
 function buildKeywords(document: DocumentDto, chunks: PreviewChunk[]): string[] {
@@ -214,7 +223,7 @@ function buildKeywords(document: DocumentDto, chunks: PreviewChunk[]): string[] 
     .replace(/[^\p{Script=Han}a-zA-Z0-9]+/gu, ' ')
     .split(/\s+/)
     .map((word) => word.trim())
-    .filter((word) => word.length >= 2 && !['PDF', 'TXT', 'DOCX', 'DOC'].includes(word.toUpperCase()));
+    .filter((word) => word.length >= 2 && !['PDF', 'TXT', 'DOCX', 'DOC', 'XLSX', 'XLS'].includes(word.toUpperCase()));
   return Array.from(new Set(words)).slice(0, 5);
 }
 
@@ -229,6 +238,7 @@ export function DocumentDetailPage({
   const [document, setDocument] = useState<DocumentDto | undefined>(initialDocument);
   const [settings, setSettings] = useState<SettingsResponse | null>(null);
   const [documentChunks, setDocumentChunks] = useState<DocumentChunkDto[]>([]);
+  const [processingSteps, setProcessingSteps] = useState<DocumentProcessingStepDto[]>([]);
   const [loading, setLoading] = useState(!initialDocument);
   const [error, setError] = useState<string | undefined>();
   const [refreshing, setRefreshing] = useState(false);
@@ -239,14 +249,20 @@ export function DocumentDetailPage({
     setLoading(!initialDocument);
     setError(undefined);
 
-    Promise.allSettled([documentsApi.get(documentId), documentsApi.chunks(documentId), settingsApi.get()])
-      .then(([documentResult, chunksResult, settingsResult]) => {
+    Promise.allSettled([documentsApi.get(documentId), documentsApi.processing(documentId), documentsApi.chunks(documentId), settingsApi.get()])
+      .then(([documentResult, stepsResult, chunksResult, settingsResult]) => {
         if (!mounted) return;
 
         if (documentResult.status === 'fulfilled') {
           setDocument(documentResult.value);
         } else if (!initialDocument) {
-          setError(documentResult.reason instanceof Error ? documentResult.reason.message : '文档处理详情加载失败');
+            setError(documentResult.reason instanceof Error ? documentResult.reason.message : '文档处理详情加载失败');
+        }
+
+        if (stepsResult.status === 'fulfilled') {
+          setProcessingSteps(stepsResult.value);
+        } else {
+          setProcessingSteps([]);
         }
 
         if (chunksResult.status === 'fulfilled') {
@@ -270,6 +286,43 @@ export function DocumentDetailPage({
     };
   }, [documentId, documentsApi, initialDocument, settingsApi]);
 
+  useEffect(() => {
+    if (!document || isTerminalStatus(document.status)) {
+      return undefined;
+    }
+
+    let cancelled = false;
+    const timer = window.setTimeout(async () => {
+      try {
+        const [nextDocument, nextSteps] = await Promise.all([
+          documentsApi.get(documentId),
+          documentsApi.processing(documentId),
+        ]);
+        if (cancelled) return;
+        setDocument(nextDocument);
+        setProcessingSteps(nextSteps);
+        if (nextDocument.status === 'READY') {
+          documentsApi.chunks(documentId)
+            .then((chunks) => {
+              if (!cancelled) setDocumentChunks(chunks);
+            })
+            .catch(() => {
+              if (!cancelled) setDocumentChunks([]);
+            });
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : '处理进度刷新失败');
+        }
+      }
+    }, 500);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [document, documentId, documentsApi]);
+
   const detail = useMemo(() => {
     if (!document) return null;
     const chunks = buildPreviewChunks(documentChunks, settings?.rag.chunkOverlap ?? 0);
@@ -286,7 +339,7 @@ export function DocumentDetailPage({
       chunkCount,
       vectorCount,
       chunks,
-      steps: buildProcessingSteps(document, { characters, chunkCount, vectorCount }),
+      steps: processingSteps.length > 0 ? mapProcessingSteps(processingSteps) : buildFallbackSteps(document),
       vectorDimension,
       tableCount: 0,
       imageCount: 0,
@@ -294,7 +347,7 @@ export function DocumentDetailPage({
       isIndexed,
       keywords: buildKeywords(document, chunks),
     };
-  }, [document, documentChunks, settings?.embedding.model, settings?.rag.chunkOverlap]);
+  }, [document, documentChunks, processingSteps, settings?.embedding.model, settings?.rag.chunkOverlap]);
 
   const handleReprocess = async () => {
     if (!document) return;
@@ -302,9 +355,11 @@ export function DocumentDetailPage({
     setError(undefined);
     try {
       const nextDocument = await documentsApi.reprocess(document.id);
-      const nextChunks = await documentsApi.chunks(document.id);
       setDocument(nextDocument);
-      setDocumentChunks(nextChunks);
+      setProcessingSteps(await documentsApi.processing(document.id));
+      if (nextDocument.status === 'READY') {
+        setDocumentChunks(await documentsApi.chunks(document.id));
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : '重新处理失败');
     } finally {
@@ -335,11 +390,18 @@ export function DocumentDetailPage({
   }
 
   const steps = detail.steps;
+  const startedAt = processingStartedAt(document, steps);
+  const duration = processingDuration(document, steps);
   const embeddingModel = settings?.embedding.model ?? '未读取';
   const embeddingProvider = providerLabel(settings?.embedding.provider);
   const vectorStoreType = vectorStoreLabel(settings?.vectorStore.type);
-  const vectorCollection = settings?.vectorStore.collectionName ?? 'rag_documents_v1';
+  const vectorCollection = runtimeCollectionName(
+    settings?.vectorStore.collectionName ?? 'rag_documents_v1',
+    settings?.embedding.provider,
+    settings?.embedding.model,
+  );
   const averageVectorSize = detail.vectorDimension ? `${(detail.vectorDimension * 4 / 1024).toFixed(1)} KB` : '-';
+  const previewChunks = detail.chunks.slice(0, 4);
   const extractStats: ExtractStat[] = [
     { label: '提取字符数', value: detail.characters.toLocaleString('zh-CN'), unit: '字符', icon: FileText },
     { label: '提取段落数', value: detail.chunkCount.toLocaleString('zh-CN'), unit: '段落', icon: Layers },
@@ -396,8 +458,8 @@ export function DocumentDetailPage({
                 <dd>{detail.chunkCount.toLocaleString('zh-CN')}</dd>
               </div>
               <div>
-                <dt>上传时间</dt>
-                <dd>{formatDateTime(document.uploadedAt)}</dd>
+                <dt>处理开始时间</dt>
+                <dd>{formatDateTime(startedAt.toISOString())}</dd>
               </div>
               <div>
                 <dt>处理完成时间</dt>
@@ -405,7 +467,7 @@ export function DocumentDetailPage({
               </div>
               <div>
                 <dt>处理耗时</dt>
-                <dd>44 秒</dd>
+                <dd>{duration}</dd>
               </div>
             </dl>
           </div>
@@ -442,10 +504,10 @@ export function DocumentDetailPage({
                 <span>重叠字符</span>
               </div>
               {detail.chunks.length > 0 ? (
-                detail.chunks.map((chunk) => (
+                previewChunks.map((chunk) => (
                   <div className="detail-chunk-row" key={chunk.id}>
-                    <span>{chunk.id}</span>
-                    <span>{chunk.text}</span>
+                    <span className="chunk-id">{chunk.id}</span>
+                    <span className="chunk-preview-text">{chunk.text}</span>
                     <span>{chunk.characters.toLocaleString('zh-CN')}</span>
                     <span>{chunk.tokens}</span>
                     <span>{chunk.overlap}</span>
@@ -453,7 +515,8 @@ export function DocumentDetailPage({
                 ))
               ) : (
                 <div className="detail-chunk-empty">
-                  <span>暂无可预览文本块</span>
+                  <strong>暂无可预览文本块</strong>
+                  <small>索引构建成功后会显示 Chunk 内容、字符数和 Token 估算。</small>
                 </div>
               )}
             </div>
@@ -563,11 +626,19 @@ export function DocumentDetailPage({
             <CheckCircle2 size={32} />
             <div>
               <strong>{document.status === 'READY' ? '处理完成' : document.status === 'FAILED' ? '处理失败' : '处理中'}</strong>
-              <span>{document.status === 'FAILED' ? document.errorMessage ?? '处理过程出现错误' : '文档已成功处理，可用于问答'}</span>
-              <button className="primary-button" disabled={document.status !== 'READY'} type="button" onClick={() => onAskDocument(document)}>
-                <MessageCircle size={16} />
-                去文档问答
-              </button>
+              <span>
+                {document.status === 'READY'
+                  ? '文档已成功处理，可用于问答'
+                  : document.status === 'FAILED'
+                    ? document.errorMessage ?? '处理过程出现错误'
+                    : '文档正在解析、分块或向量化，请稍候'}
+              </span>
+              {document.status === 'READY' ? (
+                <button className="primary-button" type="button" onClick={() => onAskDocument(document)}>
+                  <MessageCircle size={16} />
+                  去文档问答
+                </button>
+              ) : null}
             </div>
           </div>
         </article>
