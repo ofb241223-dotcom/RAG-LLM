@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     deepseek_api_key: str | None = None
     deepseek_model: str = "deepseek-v4-flash"
     openrouter_api_key: str | None = None
-    openrouter_embedding_model: str = "nvidia/llama-nemotron-embed-vl-1b-v2:free"
+    openrouter_embedding_model: str = "openai/text-embedding-3-small"
     openrouter_llm_model: str = "openai/gpt-oss-120b:free"
 
     model_config = SettingsConfigDict(

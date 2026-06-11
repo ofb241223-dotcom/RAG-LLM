@@ -98,6 +98,7 @@ GOOGLE_LLM_MODEL=gemini-3.1-flash-lite
 
 ```properties
 OPENROUTER_API_KEY=你的_OpenRouter_Key
+OPENROUTER_EMBEDDING_MODEL=openai/text-embedding-3-small
 ```
 
 注意：`.env` 已被 `.gitignore` 忽略，不要把真实 API Key 提交到仓库。
@@ -219,7 +220,7 @@ VITE_API_BASE_URL=http://127.0.0.1:8080/api npm run dev -- --host 0.0.0.0 --port
 
 系统设置页面只负责选择模型和参数，不在前端填写 API Key。API Key 由 `.env` 提供，并由后端/RAG 服务读取。
 
-可选模型会出现在系统设置页面中，包括 Google AI Studio 和 OpenRouter 的部分模型。模型是否可用取决于你的 API Key、账号额度和网络环境。
+可选模型会出现在系统设置页面中，包括 Google AI Studio 和 OpenRouter 的部分模型。模型是否可用取决于你的 API Key、账号额度和网络环境。当前已验证的 Google Embedding 选项是 `gemini-embedding-001` 和 `gemini-embedding-2`；`gemini-embedding-002` 不支持本项目当前使用的 `embedContent` 调用方式，因此不放入前端选项。OpenRouter Embedding 默认使用 `openai/text-embedding-3-small`。
 
 ## 测试与构建
 

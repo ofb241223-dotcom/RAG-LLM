@@ -1,6 +1,7 @@
 package com.example.ragllm.settings;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.not;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -47,6 +48,17 @@ class SettingsApiTest {
                 .andExpect(jsonPath("$.rag.topK").value(5))
                 .andExpect(jsonPath("$.rag.chunkSize").value(500))
                 .andExpect(jsonPath("$.rag.chunkOverlap").value(80));
+    }
+
+    @Test
+    void exposesOnlyEmbeddingModelsThatMatchSupportedProviderEndpoints() throws Exception {
+        mockMvc.perform(get("/api/settings/models"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.embeddingModels[*].model", hasItem("gemini-embedding-001")))
+                .andExpect(jsonPath("$.embeddingModels[*].model", hasItem("gemini-embedding-2")))
+                .andExpect(jsonPath("$.embeddingModels[*].model", hasItem("openai/text-embedding-3-small")))
+                .andExpect(jsonPath("$.embeddingModels[*].model", not(hasItem("gemini-embedding-002"))))
+                .andExpect(jsonPath("$.embeddingModels[*].model", not(hasItem("nvidia/llama-nemotron-embed-vl-1b-v2:free"))));
     }
 
     @Test

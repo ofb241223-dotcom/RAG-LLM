@@ -142,7 +142,7 @@ def test_openrouter_embedding_provider_uses_openai_compatible_embeddings() -> No
     fake_client = FakeOpenAiClient()
     provider = OpenRouterEmbeddingProvider(
         api_key="openrouter-key",
-        model="nvidia/llama-nemotron-embed-vl-1b-v2:free",
+        model="openai/text-embedding-3-small",
         client_factory=lambda **_kwargs: fake_client,
     )
 
@@ -150,7 +150,7 @@ def test_openrouter_embedding_provider_uses_openai_compatible_embeddings() -> No
 
     assert vectors == [[1.0, 2.0]]
     assert fake_client.embeddings.calls == [
-        {"model": "nvidia/llama-nemotron-embed-vl-1b-v2:free", "input": ["测试文本"]}
+        {"model": "openai/text-embedding-3-small", "input": ["测试文本"]}
     ]
 
 

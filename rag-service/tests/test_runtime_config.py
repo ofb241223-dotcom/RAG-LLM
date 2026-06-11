@@ -4,6 +4,13 @@ import httpx
 import pytest
 
 from rag_service.main import create_app
+from rag_service.config import Settings
+
+
+def test_openrouter_default_embedding_model_matches_embeddings_endpoint() -> None:
+    settings = Settings(_env_file=None)
+
+    assert settings.openrouter_embedding_model == "openai/text-embedding-3-small"
 
 
 @pytest.mark.anyio

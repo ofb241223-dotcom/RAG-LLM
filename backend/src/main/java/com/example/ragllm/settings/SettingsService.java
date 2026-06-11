@@ -52,9 +52,8 @@ public class SettingsService {
                 ),
                 List.of(
                         new ModelOptionDto("google", "gemini-embedding-001", "Gemini Embedding 001", false, true, "当前默认，已验证可用"),
-                        new ModelOptionDto("google", "gemini-embedding-2", "Gemini Embedding 2", false, false, "保存前建议先测试连接"),
-                        new ModelOptionDto("google", "gemini-embedding-002", "Gemini Embedding 002", false, false, "Google AI Studio embedding 候选模型"),
-                        new ModelOptionDto("openrouter", "nvidia/llama-nemotron-embed-vl-1b-v2:free", "nvidia/llama-nemotron-embed-vl-1b-v2", true, false, "OpenRouter embedding 端点，保存前建议先测试")
+                        new ModelOptionDto("google", "gemini-embedding-2", "Gemini Embedding 2", false, false, "已验证可用，保存前建议先测试连接"),
+                        new ModelOptionDto("openrouter", "openai/text-embedding-3-small", "openai/text-embedding-3-small", false, false, "已验证可通过 OpenRouter embeddings 端点返回向量")
                 )
         );
     }

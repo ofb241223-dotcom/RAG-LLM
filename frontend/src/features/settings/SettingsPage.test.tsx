@@ -48,9 +48,9 @@ const models: SettingsModelsResponse = {
     { provider: 'google', model: 'gemini-embedding-001', label: 'Gemini Embedding 001', free: false, recommended: true, note: '推荐' },
     {
       provider: 'openrouter',
-      model: 'nvidia/llama-nemotron-embed-vl-1b-v2:free',
-      label: 'nvidia/llama-nemotron-embed-vl-1b-v2',
-      free: true,
+      model: 'openai/text-embedding-3-small',
+      label: 'openai/text-embedding-3-small',
+      free: false,
       recommended: false,
       note: 'OpenRouter',
     },
