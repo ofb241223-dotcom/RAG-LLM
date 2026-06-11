@@ -31,13 +31,12 @@ RAG-LLM/
 ├── frontend/           # React 前端
 ├── backend/            # Spring Boot 后端 API
 ├── rag-service/        # Python FastAPI RAG 服务
-├── scripts/            # 可选的本地启动脚本
 ├── docs/ui-reference/  # UI 参考图
 ├── .env.example        # 环境变量模板，不包含真实密钥
 └── README.md
 ```
 
-说明：`backend/src/test`、`frontend/src/**/*.test.tsx`、`rag-service/tests` 是项目测试代码，用来证明接口、页面和 RAG 流程可以被自动验证，不是无关文件。`scripts/dev-stack.sh` 是可选启动脚本，方便本机开发和演示；不使用脚本也可以按下面的手动命令分别启动三个服务。
+说明：`backend/src/test`、`frontend/src/**/*.test.tsx`、`rag-service/tests` 是项目测试代码，用来证明接口、页面和 RAG 流程可以被自动验证，不是无关文件。
 
 ## 环境要求
 
@@ -146,42 +145,13 @@ cd ..
 
 ## 启动项目
 
-推荐使用项目脚本统一启动三个服务：
+项目需要同时启动 3 个服务：RAG 服务、Spring Boot 后端、React 前端。请分别打开 3 个终端，先进入项目根目录，再按下面顺序复制命令执行。
+
+如果是刚 clone 下来的项目，先进入项目目录：
 
 ```bash
-./scripts/dev-stack.sh start-all
+cd RAG-LLM
 ```
-
-启动后访问：
-
-```text
-前端页面:   http://127.0.0.1:5176/
-后端状态:   http://127.0.0.1:8080/api/status
-RAG 状态:   http://127.0.0.1:8000/health
-后端接口:   http://127.0.0.1:8080/swagger-ui/index.html
-RAG 接口:    http://127.0.0.1:8000/docs
-```
-
-常用脚本：
-
-```bash
-./scripts/dev-stack.sh status       # 查看三个服务状态
-./scripts/dev-stack.sh logs         # 查看日志
-./scripts/dev-stack.sh restart-all  # 重启前端、后端、RAG
-./scripts/dev-stack.sh stop-all     # 停止全部服务
-```
-
-如果只想快速看 UI，不想连接 MySQL，可以使用 H2 内存库模式：
-
-```bash
-./scripts/dev-stack.sh start-h2
-```
-
-H2 模式只适合临时演示，数据不会长期保留。
-
-## 手动启动方式
-
-不使用 `./scripts/dev-stack.sh start-all` 时，需要分别打开三个终端启动服务。推荐启动顺序是：RAG 服务 -> Spring Boot 后端 -> React 前端。
 
 终端 1，启动 RAG 服务：
 
@@ -194,7 +164,9 @@ cd rag-service
 
 ```bash
 cd backend
-export RAG_SERVICE_URL=http://127.0.0.1:8000
+set -a
+source ../.env
+set +a
 mvn spring-boot:run -Dspring-boot.run.arguments='--server.port=8080'
 ```
 
@@ -205,7 +177,17 @@ cd frontend
 VITE_API_BASE_URL=http://127.0.0.1:8080/api npm run dev -- --host 0.0.0.0 --port 5176
 ```
 
-手动重启时，在对应终端按 `Ctrl+C` 停止，再重新执行该服务的启动命令即可。如果想检查端口是否已经被占用：
+三个终端都启动成功后，打开：
+
+```text
+前端页面:   http://127.0.0.1:5176/
+后端状态:   http://127.0.0.1:8080/api/status
+RAG 状态:   http://127.0.0.1:8000/health
+后端接口:   http://127.0.0.1:8080/swagger-ui/index.html
+RAG 接口:    http://127.0.0.1:8000/docs
+```
+
+重启某个服务时，在对应终端按 `Ctrl+C` 停止，再重新执行该终端的启动命令即可。如果想检查端口是否已经被占用：
 
 ```bash
 lsof -i :5176
@@ -334,7 +316,6 @@ curl http://127.0.0.1:8080/api/documents?size=5
 如果前端提示“后端服务不可用”，先确认：
 
 ```bash
-./scripts/dev-stack.sh status
 curl http://127.0.0.1:8080/api/status
 ```
 
@@ -419,4 +400,4 @@ sudo apt install libreoffice
 - 逐页对照 UI 设计图精修视觉细节
 - 增加更细的文档解析指标
 - 增加用户登录和权限
-- 增加部署脚本或 Docker Compose
+- 增加 Docker Compose 部署方式
