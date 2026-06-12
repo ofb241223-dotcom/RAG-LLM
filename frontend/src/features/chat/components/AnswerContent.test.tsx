@@ -25,6 +25,29 @@ describe('AnswerContent', () => {
     expect(onSelectCitation).toHaveBeenCalledWith(citation);
   });
 
+  it('keeps standalone citation marker lines inline with the preceding list item', () => {
+    const onSelectCitation = vi.fn();
+    const secondCitation = { ...citation, key: '102:1:chunk-2', markerIndex: 2, chunkId: 'chunk-2' };
+
+    render(
+      <AnswerContent
+        content={'- 学号：202424003\n[1]\n- 班级：软工2401\n[2]'}
+        citations={[citation, secondCitation]}
+        messageId={102}
+        onSelectCitation={onSelectCitation}
+      />,
+    );
+
+    const answer = screen.getByTestId('assistant-answer-102');
+    const items = answer.querySelectorAll('li');
+    expect(items).toHaveLength(2);
+    expect(within(items[0]).getByRole('button', { name: '引用 1' })).toBeInTheDocument();
+    expect(within(items[1]).getByRole('button', { name: '引用 2' })).toBeInTheDocument();
+
+    fireEvent.click(within(items[1]).getByRole('button', { name: '引用 2' }));
+    expect(onSelectCitation).toHaveBeenCalledWith(secondCitation);
+  });
+
   it('leaves unmatched citation markers disabled', () => {
     render(<AnswerContent content={'无匹配来源。[2]'} citations={[citation]} messageId={102} onSelectCitation={() => undefined} />);
 

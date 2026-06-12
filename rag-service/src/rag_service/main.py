@@ -338,6 +338,7 @@ def create_llm_provider(
             temperature=runtime_config.temperature if runtime_config is not None else 0.2,
             max_tokens=runtime_config.max_tokens if runtime_config is not None else None,
             top_p=runtime_config.top_p if runtime_config is not None else None,
+            frequency_penalty=runtime_config.frequency_penalty if runtime_config is not None else None,
             system_prompt=runtime_config.system_prompt if runtime_config is not None else None,
             request_logger=request_logger,
         )

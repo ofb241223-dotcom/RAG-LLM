@@ -22,6 +22,7 @@
 ## 目录
 
 - [项目简介](#项目简介)
+- [项目结构](#项目结构)
 - [核心亮点](#核心亮点)
 - [功能演示](#功能演示)
 - [技术栈](#技术栈)
@@ -49,6 +50,48 @@
 - `TXT`
 - `DOCX` / `DOC`
 - `XLSX` / `XLS`
+
+---
+
+## 项目结构
+
+```text
+RAG-LLM/
+├── frontend/                         # React + Vite 前端应用
+│   ├── src/api/                       # 前端 API 请求封装
+│   ├── src/assets/                    # 前端图片与静态资源
+│   ├── src/features/                  # 工作台、文档、问答、设置等页面模块
+│   ├── src/types/                     # 前端 TypeScript 类型
+│   └── src/utils/                     # 通用工具函数
+├── backend/                           # Spring Boot 后端服务
+│   ├── src/main/java/com/example/ragllm/
+│   │   ├── document/                  # 文档、处理流程、对话、引用等业务接口
+│   │   ├── settings/                  # 系统设置与模型配置接口
+│   │   ├── observability/             # 请求日志与可观测接口
+│   │   └── status/                    # 服务状态接口
+│   └── src/main/resources/
+│       ├── application.properties     # 后端运行配置
+│       └── schema.sql                 # MySQL 表结构初始化脚本
+├── rag-service/                       # Python FastAPI RAG 服务
+│   ├── pyproject.toml                 # Python 项目依赖与打包配置
+│   ├── src/rag_service/main.py        # FastAPI 应用入口与 HTTP 接口
+│   ├── src/rag_service/service.py     # 文档入库、检索和问答编排
+│   ├── src/rag_service/providers.py   # Gemini、OpenRouter 等模型 Provider
+│   ├── src/rag_service/vector_store.py # Chroma 向量库封装
+│   └── src/rag_service/documents/     # 文档格式识别、解析和文本分块
+├── docs/ui-reference/                 # 页面 UI 参考图
+├── assets/readme/                     # README 使用的 Logo 与演示截图
+├── uploads/                           # 本地运行时上传文件目录，默认不提交
+├── .env.example                       # 环境变量模板
+└── README.md
+```
+
+代码分层说明：
+
+- 前端只负责页面交互和接口调用，不直接保存密钥或访问模型服务。
+- 后端负责业务状态、MySQL 持久化、文件落盘和调用 RAG 服务。
+- FastAPI RAG 服务负责文档解析、文本分块、Embedding、向量检索和 LLM 生成。
+- MySQL 保存业务数据，Chroma 保存向量索引，`uploads/` 保存原始上传文件。
 
 ---
 
@@ -88,109 +131,127 @@
 
 ## 功能演示
 
-本节预留真实页面截图位置。截图建议来自本项目运行后的真实页面，放入 `assets/readme/` 目录后再替换为图片引用。
-
 ### 1. 工作台总览
 
 展示内容：文档总数、已解析文档、对话总数、支持格式、最近上传文档、最新动态、处理状态和快捷入口。
 
-截图占位：`assets/readme/dashboard.png`
+<p align="center">
+  <img src="./assets/readme/dashboard.png" alt="工作台总览" width="100%" />
+</p>
 
-### 2. 工作台动态弹窗
+### 2. 文档上传与处理进度
 
-展示内容：点击“查看全部”后展示完整动态列表，包含上传、处理完成、处理失败、删除文档等事件。
+展示内容：批量上传、上传队列、解析配置、上传说明，以及文档从上传到向量入库的处理进度。
 
-截图占位：`assets/readme/dashboard-activities.png`
+<table>
+  <tr>
+    <td width="50%">
+      <img src="./assets/readme/upload-document.png" alt="批量上传文档" width="100%" />
+    </td>
+    <td width="50%">
+      <img src="./assets/readme/upload-progress.png" alt="上传后处理进度" width="100%" />
+    </td>
+  </tr>
+</table>
 
-### 3. 批量上传文档
+### 3. 文档中心与筛选
 
-展示内容：批量上传、上传队列、解析配置、上传说明和处理进度。
+展示内容：文档列表、关键词搜索、日期筛选、来源筛选、状态筛选、重新处理、下载原文、删除文档和处理状态。
 
-截图占位：`assets/readme/upload-document.png`
+<p align="center">
+  <img src="./assets/readme/document-center.png" alt="文档中心" width="100%" />
+</p>
 
-### 4. 上传后处理进度
+<table>
+  <tr>
+    <td width="50%">
+      <img src="./assets/readme/keywords-for-screening.png" alt="关键词筛选" width="100%" />
+    </td>
+    <td width="50%">
+      <img src="./assets/readme/date-screening.png" alt="日期筛选" width="100%" />
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <img src="./assets/readme/type-of-screening.png" alt="来源筛选" width="100%" />
+    </td>
+    <td width="50%">
+      <img src="./assets/readme/status-screening.png" alt="状态筛选" width="100%" />
+    </td>
+  </tr>
+</table>
 
-展示内容：文档从上传、文本提取、文本分块、向量化到存储完成的步骤变化，体现处理流程不是静态展示。
-
-截图占位：`assets/readme/upload-progress.png`
-
-### 5. 文档中心
-
-展示内容：文档列表、状态筛选、日期筛选、重新处理、下载原文、删除文档和处理状态。
-
-截图占位：`assets/readme/document-center.png`
-
-### 6. 文档筛选与状态管理
-
-展示内容：按日期、来源和解析状态筛选文档，并查看已完成、处理中、处理失败、需重新处理等状态。
-
-截图占位：`assets/readme/document-filter.png`
-
-### 7. 文档处理详情
+### 4. 文档处理详情与文本块预览
 
 展示内容：处理流程、处理耗时、文本提取结果、文本块预览、索引存储状态和模型配置。
 
-截图占位：`assets/readme/document-detail.png`
+<table>
+  <tr>
+    <td width="50%">
+      <img src="./assets/readme/document-detail.png" alt="文档处理详情" width="100%" />
+    </td>
+    <td width="50%">
+      <img src="./assets/readme/chunk-preview.png" alt="文本块预览" width="100%" />
+    </td>
+  </tr>
+</table>
 
-### 8. 文本块预览
+### 5. 文档问答与引用片段
 
-展示内容：文档解析后的文本块、Markdown 表格、公式文本和片段内容，便于说明向量检索的基础数据来自哪里。
+展示内容：选择文档、发送问题、流式回答、Markdown/LaTeX 渲染、引用片段、相似度和片段溯源。
 
-截图占位：`assets/readme/chunk-preview.png`
+<table>
+  <tr>
+    <td width="50%">
+      <img src="./assets/readme/document-chat.png" alt="文档问答" width="100%" />
+    </td>
+    <td width="50%">
+      <img src="./assets/readme/citation-fragments.png" alt="引用片段" width="100%" />
+    </td>
+  </tr>
+</table>
 
-### 9. 重新处理文档
-
-展示内容：修改 RAG 参数后文档进入“需重新处理”，点击重新处理后重新生成文本块和向量索引。
-
-截图占位：`assets/readme/reprocess-document.png`
-
-### 10. 文档问答
-
-展示内容：选择文档、发送问题、流式回答、Markdown/LaTeX 渲染、引用片段与相似度。
-
-截图占位：`assets/readme/document-chat.png`
-
-### 11. 引用片段详情
-
-展示内容：AI 回答中的引用编号、右侧引用片段列表、相似度分数和片段详情弹窗。
-
-截图占位：`assets/readme/citation-detail.png`
-
-### 12. Markdown 与 LaTeX 回答渲染
-
-展示内容：AI 回复中的标题、列表、表格、代码块和公式渲染效果。
-
-截图占位：`assets/readme/markdown-latex-answer.png`
-
-### 13. 对话历史
+### 6. 对话历史
 
 展示内容：历史会话列表、会话切换、对话详情、引用记录、删除和导出。
 
-截图占位：`assets/readme/chat-history.png`
+<p align="center">
+  <img src="./assets/readme/chat-history.png" alt="对话历史" width="100%" />
+</p>
 
-### 14. 系统设置
+### 7. 系统设置
 
 展示内容：LLM 配置、Embedding 配置、RAG 策略配置、模型连接状态和参数持久化。
 
-截图占位：`assets/readme/settings.png`
+<p align="center">
+  <img src="./assets/readme/settings-LLM.png" alt="LLM 配置" width="100%" />
+</p>
 
-### 15. 模型连接状态
+<table>
+  <tr>
+    <td width="50%">
+      <img src="./assets/readme/settings-Embedding.png" alt="Embedding 配置" width="100%" />
+    </td>
+    <td width="50%">
+      <img src="./assets/readme/settings-RAG.png" alt="RAG 策略配置" width="100%" />
+    </td>
+  </tr>
+</table>
 
-展示内容：LLM 和 Embedding 当前模型、服务状态、测试结果与错误提示。
-
-截图占位：`assets/readme/model-status.png`
-
-### 16. 请求可观测日志
-
-展示内容：后端请求日志和 RAG 服务请求日志，说明系统可以追踪接口调用、耗时和错误摘要。
-
-截图占位：`assets/readme/observability.png`
-
-### 17. 接口文档
+### 8. 接口文档
 
 展示内容：Spring Boot Swagger UI 与 FastAPI RAG Docs。
 
-截图占位：`assets/readme/swagger.png`、`assets/readme/rag-docs.png`
+<table>
+  <tr>
+    <td width="50%">
+      <img src="./assets/readme/swagger.png" alt="Spring Boot Swagger UI" width="100%" />
+    </td>
+    <td width="50%">
+      <img src="./assets/readme/rag-docs.png" alt="FastAPI RAG Docs" width="100%" />
+    </td>
+  </tr>
+</table>
 
 ---
 

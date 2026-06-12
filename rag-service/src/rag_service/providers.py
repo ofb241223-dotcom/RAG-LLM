@@ -203,6 +203,7 @@ class GoogleGeminiLlmProvider:
         temperature: float = 0.2,
         max_tokens: int | None = None,
         top_p: float | None = None,
+        frequency_penalty: float | None = None,
         system_prompt: str | None = None,
         request_logger: RequestLogger | None = None,
     ) -> None:
@@ -212,6 +213,7 @@ class GoogleGeminiLlmProvider:
         self.temperature = temperature
         self.max_tokens = max_tokens
         self.top_p = top_p
+        self.frequency_penalty = frequency_penalty
         self.system_prompt = system_prompt or "你是一个严谨的文档问答助手，只能依据给定引用片段回答。\n如果无法从资料中读取答案,请诚实说明"
         self.request_logger = request_logger
 
@@ -234,6 +236,8 @@ class GoogleGeminiLlmProvider:
                 config["max_output_tokens"] = self.max_tokens
             if self.top_p is not None:
                 config["top_p"] = self.top_p
+            if self.frequency_penalty is not None:
+                config["frequency_penalty"] = self.frequency_penalty
             response = client.models.generate_content(
                 model=self.model,
                 contents=prompt,

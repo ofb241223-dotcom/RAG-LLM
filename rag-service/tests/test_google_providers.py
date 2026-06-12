@@ -101,6 +101,7 @@ def test_google_llm_provider_generates_grounded_answer_request() -> None:
         api_key="llm-key",
         model="gemini-3.1-flash-lite",
         client_factory=lambda api_key: captured_keys.append(api_key) or fake_client,
+        frequency_penalty=0.4,
         request_logger=request_logs.append,
     )
 
@@ -114,6 +115,7 @@ def test_google_llm_provider_generates_grounded_answer_request() -> None:
     assert captured_keys == ["llm-key"]
     assert answer == "基于引用片段的回答。"
     assert fake_client.models.generate_calls[0]["model"] == "gemini-3.1-flash-lite"
+    assert fake_client.models.generate_calls[0]["config"]["frequency_penalty"] == 0.4
     request_text = fake_client.models.generate_calls[0]["contents"]
     assert "只能依据给定引用片段回答" in request_text
     assert "每个关键结论、名单项、判断句后都要标注引用编号" in request_text
