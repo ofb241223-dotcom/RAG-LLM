@@ -1,0 +1,60 @@
+import { fireEvent, render, screen, within } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
+import { AnswerContent } from './AnswerContent';
+import { citation } from '../chatTestData';
+
+describe('AnswerContent', () => {
+  it('renders Markdown, LaTeX, and clickable citation markers', () => {
+    const onSelectCitation = vi.fn();
+
+    render(
+      <AnswerContent
+        content={'**多头注意力** 可以表示为 $QK^T$。[1]\n\n- 支持列表'}
+        citations={[citation]}
+        messageId={102}
+        onSelectCitation={onSelectCitation}
+      />,
+    );
+
+    expect(screen.getByText('多头注意力').tagName).toBe('STRONG');
+    expect(screen.getByTestId('assistant-answer-102').querySelector('.katex')).not.toBeNull();
+    expect(screen.getByTestId('assistant-answer-102').textContent).toContain('QK^T');
+    expect(screen.getByText('支持列表')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '引用 1' }));
+    expect(onSelectCitation).toHaveBeenCalledWith(citation);
+  });
+
+  it('leaves unmatched citation markers disabled', () => {
+    render(<AnswerContent content={'无匹配来源。[2]'} citations={[citation]} messageId={102} onSelectCitation={() => undefined} />);
+
+    expect(screen.getByRole('button', { name: '引用 2' })).toBeDisabled();
+    expect(within(screen.getByTestId('assistant-answer-102')).getByText('无匹配来源。')).toBeInTheDocument();
+  });
+
+  it('shows citation buttons when the model response omits inline markers', () => {
+    const onSelectCitation = vi.fn();
+
+    render(<AnswerContent content="模型回答没有内联引用编号。" citations={[citation]} messageId={102} onSelectCitation={onSelectCitation} />);
+
+    expect(screen.getByText('引用来源')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '引用 1' }));
+    expect(onSelectCitation).toHaveBeenCalledWith(citation);
+  });
+
+  it('renders table cell line breaks instead of showing raw br tags', () => {
+    render(
+      <AnswerContent
+        content={'| 项目 | 内容 |\n| --- | --- |\n| 学术竞赛 | 1. 国家级三等奖<br>2. 省级二等奖 |'}
+        citations={[]}
+        messageId={103}
+        onSelectCitation={() => undefined}
+      />,
+    );
+
+    const answer = screen.getByTestId('assistant-answer-103');
+    expect(answer.textContent).not.toContain('<br>');
+    expect(answer.querySelector('table')).not.toBeNull();
+    expect(answer.querySelector('td br')).not.toBeNull();
+  });
+});

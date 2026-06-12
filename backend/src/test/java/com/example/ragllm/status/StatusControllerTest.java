@@ -2,15 +2,22 @@ package com.example.ragllm.status;
 
 import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.example.ragllm.config.WebCorsConfiguration;
+import com.example.ragllm.observability.ApiRequestLoggingFilter;
+import com.example.ragllm.observability.RequestLogStore;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.test.web.servlet.MockMvc;
 
 @WebMvcTest(StatusController.class)
+@Import({WebCorsConfiguration.class, RequestLogStore.class, ApiRequestLoggingFilter.class})
 class StatusControllerTest {
 
     @Autowired
@@ -22,9 +29,9 @@ class StatusControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.service").value("rag-llm-backend"))
                 .andExpect(jsonPath("$.status").value("UP"))
-                .andExpect(jsonPath("$.documentFormats", containsInAnyOrder("PDF", "TXT", "DOCX", "DOC")))
+                .andExpect(jsonPath("$.documentFormats", containsInAnyOrder("PDF", "TXT", "DOCX", "DOC", "XLSX", "XLS")))
                 .andExpect(jsonPath("$.processingStatuses",
-                        containsInAnyOrder("UPLOADED", "PARSING", "EMBEDDING", "READY", "FAILED")));
+                        containsInAnyOrder("UPLOADED", "PARSING", "EMBEDDING", "REPROCESS_REQUIRED", "READY", "FAILED")));
     }
 
     @Test
@@ -32,5 +39,23 @@ class StatusControllerTest {
         mockMvc.perform(get("/api/health"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("UP"));
+    }
+
+    @Test
+    void apiEndpointsAllowLocalViteDevelopmentOrigins() throws Exception {
+        mockMvc.perform(get("/api/status").header("Origin", "http://localhost:5174"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Access-Control-Allow-Origin", "http://localhost:5174"));
+    }
+
+    @Test
+    void apiEndpointsAllowSettingsPutPreflightFromLocalViteOrigins() throws Exception {
+        mockMvc.perform(options("/api/settings")
+                        .header("Origin", "http://127.0.0.1:5176")
+                        .header("Access-Control-Request-Method", "PUT")
+                        .header("Access-Control-Request-Headers", "content-type"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Access-Control-Allow-Origin", "http://127.0.0.1:5176"))
+                .andExpect(header().string("Access-Control-Allow-Methods", org.hamcrest.Matchers.containsString("PUT")));
     }
 }

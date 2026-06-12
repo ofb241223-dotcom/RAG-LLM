@@ -2,8 +2,10 @@ PDF = "pdf"
 TXT = "txt"
 DOCX = "docx"
 DOC = "doc"
+XLSX = "xlsx"
+XLS = "xls"
 
-SUPPORTED_FORMATS = (PDF, TXT, DOCX, DOC)
+SUPPORTED_FORMATS = (PDF, TXT, DOCX, DOC, XLSX, XLS)
 
 
 def normalize_format(format_name: str) -> str:

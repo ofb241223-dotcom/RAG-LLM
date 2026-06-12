@@ -9,7 +9,7 @@ class ParsedDocument:
     text: str
     format: str
     source_name: str
-    metadata: dict[str, str] = field(default_factory=dict)
+    metadata: dict[str, object] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         validate_format(self.format)

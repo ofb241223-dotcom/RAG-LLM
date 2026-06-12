@@ -4,8 +4,21 @@ version = "0.1.0"
 description = "FastAPI RAG service skeleton"
 requires-python = ">=3.12,<3.13"
 dependencies = [
+    "charset-normalizer>=3.4.0",
+    "chromadb>=0.5.23",
     "fastapi>=0.115.0",
+    "google-genai>=1.0.0",
+    "openai>=1.59.0",
+    "openpyxl>=3.1.5",
+    "pydantic-settings>=2.7.0",
+    "pypdf>=5.1.0",
+    "python-docx>=1.1.2",
+    "python-multipart>=0.0.20",
+    "requests>=2.32.0",
+    "socksio>=1.0.0",
+    "tenacity>=9.0.0",
     "uvicorn[standard]>=0.30.0",
+    "xlrd>=2.0.1",
 ]
 
 [project.optional-dependencies]
