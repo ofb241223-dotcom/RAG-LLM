@@ -1,55 +1,369 @@
-# RAG 智能文档问答系统
+<p align="center">
+  <img src="./assets/readme/logo.png" alt="RAG 智能文档问答系统 Logo" width="160" />
+</p>
 
-这是一个课程设计项目，目标是实现一个可运行的智能文档问答平台。系统支持上传 PDF、TXT、Word、Excel 文档，后端会调用 Python RAG 服务解析文档、切分文本、生成向量并写入向量库；用户可以在前端围绕已上传文档进行问答，回答支持 Markdown 与 LaTeX 渲染，并保留对话历史和引用片段。
+<h1 align="center">RAG 智能文档问答系统</h1>
 
-## 功能概览
+<p align="center">
+  一个面向多格式文档的智能检索增强问答平台，支持文档解析、向量检索、引用溯源、对话管理与模型配置。
+</p>
 
-- 文档上传：支持 PDF、TXT、DOCX、DOC、XLSX、XLS。
-- 文档解析：自动完成文本提取、分块、Embedding、向量入库。
-- 文档中心：查看文档状态、分块数、向量数，支持重新处理、删除、下载原文。
-- 文档处理详情：查看处理流程、真实文本块预览、向量库和模型配置。
-- 文档问答：按当前文档检索 Top-K 片段，生成带引用的回答。
-- 流式输出：设置中开启后，问答接口会使用 NDJSON 流式返回。
-- 对话历史：按文档管理会话，支持新建、切换、删除、导出。
-- 系统设置：选择 LLM、Embedding 模型，配置 RAG 参数并自动写入后端数据库。
-- 持久化：文档、设置、会话、消息、引用均保存到 MySQL。
+<p align="center">
+  <img src="https://img.shields.io/badge/Frontend-React%20%2B%20Vite-111827?style=for-the-badge&logo=react&logoColor=61dafb" alt="React + Vite" />
+  <img src="https://img.shields.io/badge/Backend-Spring%20Boot-111827?style=for-the-badge&logo=springboot&logoColor=6db33f" alt="Spring Boot" />
+  <img src="https://img.shields.io/badge/RAG-FastAPI-111827?style=for-the-badge&logo=fastapi&logoColor=009688" alt="FastAPI" />
+  <img src="https://img.shields.io/badge/Database-MySQL%208-111827?style=for-the-badge&logo=mysql&logoColor=4ea3ff" alt="MySQL 8" />
+  <img src="https://img.shields.io/badge/Vector%20Store-Chroma-111827?style=for-the-badge" alt="Chroma" />
+  <img src="https://img.shields.io/badge/LLM-Gemini%20%2F%20OpenRouter-111827?style=for-the-badge&logo=google-gemini&logoColor=8ab4f8" alt="Gemini / OpenRouter" />
+</p>
+
+---
+
+## 目录
+
+- [项目简介](#项目简介)
+- [核心亮点](#核心亮点)
+- [功能演示](#功能演示)
+- [技术栈](#技术栈)
+- [系统架构](#系统架构)
+- [功能全景](#功能全景)
+- [数据库设计](#数据库设计)
+- [快速开始](#快速开始)
+- [接口文档](#接口文档)
+- [模型配置](#模型配置)
+- [测试与构建](#测试与构建)
+- [常见问题](#常见问题)
+- [项目状态](#项目状态)
+
+---
+
+## 项目简介
+
+`RAG 智能文档问答系统` 是一个完整可运行的文档知识问答平台。系统将传统文档管理、检索增强生成和大语言模型问答整合到同一个工作流中：用户上传文档后，系统自动完成文本解析、分块、Embedding、向量入库；提问时再从向量库检索相关片段，并由 LLM 生成带引用依据的回答。
+
+项目不是静态界面原型，而是前端、Spring Boot 后端、Python RAG 服务、MySQL 数据库与 Chroma 向量库共同组成的全栈应用。它适合用于课程设计、RAG 原型验证、文档问答场景演示和二次开发。
+
+支持的文档格式：
+
+- `PDF`
+- `TXT`
+- `DOCX` / `DOC`
+- `XLSX` / `XLS`
+
+---
+
+## 核心亮点
+
+### 1. 多格式文档接入
+
+系统支持 PDF、纯文本、Word 和 Excel 文档。上传后会生成文档记录、处理流程、文本块、向量索引和最近动态，方便追踪每个文档从上传到可问答的完整过程。
+
+### 2. 真实 RAG 流程
+
+问答不是直接把问题发给大模型，而是经过以下流程：
+
+```text
+用户问题 -> Query Embedding -> 向量检索 Top-K -> 构造上下文 -> LLM 生成回答 -> 返回引用片段
+```
+
+回答会尽量依据检索到的文档片段生成，并保留引用编号、片段内容、相似度等信息，方便回到原始资料核对。
+
+### 3. 文档处理过程可视化
+
+文档详情页展示处理流程、处理耗时、文本块预览、向量库状态和模型配置。重新处理文档时，系统会重新计算处理开始时间、步骤状态和处理结果，避免旧数据误导当前状态。
+
+### 4. 对话历史与引用溯源
+
+系统按文档管理对话会话，支持新建、切换、删除和导出对话。AI 回答支持 Markdown 与 LaTeX 渲染，引用片段也会保存到数据库，刷新后仍可查看历史上下文。
+
+### 5. 可配置模型与 RAG 策略
+
+系统设置页面支持切换 LLM、Embedding 模型和 RAG 参数，包括温度、最大输出长度、Top-K、相似度阈值、分块大小、分块重叠、是否流式输出等。配置会持久化到后端数据库。
+
+### 6. 请求可观测
+
+后端和 RAG 服务都提供请求日志接口，可以查看浏览器到后端、后端到 RAG、RAG 到模型服务的调用摘要，便于定位上传、解析、检索或生成过程中的问题。
+
+---
+
+## 功能演示
+
+本节预留真实页面截图位置。截图建议来自本项目运行后的真实页面，放入 `assets/readme/` 目录后再替换为图片引用。
+
+### 1. 工作台总览
+
+展示内容：文档总数、已解析文档、对话总数、支持格式、最近上传文档、最新动态、处理状态和快捷入口。
+
+截图占位：`assets/readme/dashboard.png`
+
+### 2. 工作台动态弹窗
+
+展示内容：点击“查看全部”后展示完整动态列表，包含上传、处理完成、处理失败、删除文档等事件。
+
+截图占位：`assets/readme/dashboard-activities.png`
+
+### 3. 批量上传文档
+
+展示内容：批量上传、上传队列、解析配置、上传说明和处理进度。
+
+截图占位：`assets/readme/upload-document.png`
+
+### 4. 上传后处理进度
+
+展示内容：文档从上传、文本提取、文本分块、向量化到存储完成的步骤变化，体现处理流程不是静态展示。
+
+截图占位：`assets/readme/upload-progress.png`
+
+### 5. 文档中心
+
+展示内容：文档列表、状态筛选、日期筛选、重新处理、下载原文、删除文档和处理状态。
+
+截图占位：`assets/readme/document-center.png`
+
+### 6. 文档筛选与状态管理
+
+展示内容：按日期、来源和解析状态筛选文档，并查看已完成、处理中、处理失败、需重新处理等状态。
+
+截图占位：`assets/readme/document-filter.png`
+
+### 7. 文档处理详情
+
+展示内容：处理流程、处理耗时、文本提取结果、文本块预览、索引存储状态和模型配置。
+
+截图占位：`assets/readme/document-detail.png`
+
+### 8. 文本块预览
+
+展示内容：文档解析后的文本块、Markdown 表格、公式文本和片段内容，便于说明向量检索的基础数据来自哪里。
+
+截图占位：`assets/readme/chunk-preview.png`
+
+### 9. 重新处理文档
+
+展示内容：修改 RAG 参数后文档进入“需重新处理”，点击重新处理后重新生成文本块和向量索引。
+
+截图占位：`assets/readme/reprocess-document.png`
+
+### 10. 文档问答
+
+展示内容：选择文档、发送问题、流式回答、Markdown/LaTeX 渲染、引用片段与相似度。
+
+截图占位：`assets/readme/document-chat.png`
+
+### 11. 引用片段详情
+
+展示内容：AI 回答中的引用编号、右侧引用片段列表、相似度分数和片段详情弹窗。
+
+截图占位：`assets/readme/citation-detail.png`
+
+### 12. Markdown 与 LaTeX 回答渲染
+
+展示内容：AI 回复中的标题、列表、表格、代码块和公式渲染效果。
+
+截图占位：`assets/readme/markdown-latex-answer.png`
+
+### 13. 对话历史
+
+展示内容：历史会话列表、会话切换、对话详情、引用记录、删除和导出。
+
+截图占位：`assets/readme/chat-history.png`
+
+### 14. 系统设置
+
+展示内容：LLM 配置、Embedding 配置、RAG 策略配置、模型连接状态和参数持久化。
+
+截图占位：`assets/readme/settings.png`
+
+### 15. 模型连接状态
+
+展示内容：LLM 和 Embedding 当前模型、服务状态、测试结果与错误提示。
+
+截图占位：`assets/readme/model-status.png`
+
+### 16. 请求可观测日志
+
+展示内容：后端请求日志和 RAG 服务请求日志，说明系统可以追踪接口调用、耗时和错误摘要。
+
+截图占位：`assets/readme/observability.png`
+
+### 17. 接口文档
+
+展示内容：Spring Boot Swagger UI 与 FastAPI RAG Docs。
+
+截图占位：`assets/readme/swagger.png`、`assets/readme/rag-docs.png`
+
+---
 
 ## 技术栈
 
-| 模块 | 技术 |
-| --- | --- |
-| 前端 | React、Vite、TypeScript、Lucide Icons、Markdown/KaTeX 渲染 |
-| 后端 | Spring Boot、JDBC、MySQL、REST API |
-| RAG 服务 | FastAPI、Chroma、Google Gemini / OpenRouter / OpenAI-compatible Provider |
-| 向量库 | Chroma 持久化存储 |
-| 测试 | Vitest、JUnit、Pytest |
+### 前端
 
-## 目录结构
+- `React`
+- `Vite`
+- `TypeScript`
+- `Lucide React`
+- `React Markdown`
+- `remark-gfm`
+- `remark-math`
+- `rehype-katex`
 
-```text
-RAG-LLM/
-├── frontend/           # React 前端
-├── backend/            # Spring Boot 后端 API
-├── rag-service/        # Python FastAPI RAG 服务
-├── docs/ui-reference/  # UI 参考图
-├── .env.example        # 环境变量模板，不包含真实密钥
-└── README.md
+### 后端
+
+- `Spring Boot`
+- `Spring JDBC`
+- `MySQL 8`
+- `Springdoc OpenAPI`
+- `JUnit`
+
+### RAG 服务
+
+- `FastAPI`
+- `Chroma`
+- `Google Gemini API`
+- `OpenRouter API`
+- `MinerU API`
+- `Pytest`
+
+### 数据与存储
+
+- `MySQL`：文档、处理步骤、系统设置、对话、消息、引用片段
+- `Chroma`：文档向量索引
+- `uploads/`：原始上传文件
+- `rag-service/rag_data/chroma/`：本地向量库持久化目录
+
+---
+
+## 系统架构
+
+```mermaid
+flowchart LR
+    U[User] --> FE[React Frontend]
+    FE -->|REST API| BE[Spring Boot Backend]
+    BE -->|JDBC| DB[(MySQL)]
+    BE -->|File Storage| UPLOADS[(uploads)]
+    BE -->|HTTP| RAG[FastAPI RAG Service]
+    RAG -->|Parse PDF| MINERU[MinerU API]
+    RAG -->|Embedding / Chat| MODEL[Gemini / OpenRouter]
+    RAG -->|Vector Index| CHROMA[(Chroma)]
 ```
 
-说明：`backend/src/test`、`frontend/src/**/*.test.tsx`、`rag-service/tests` 是项目测试代码，用来证明接口、页面和 RAG 流程可以被自动验证，不是无关文件。
+数据流说明：
 
-## 环境要求
+1. 前端负责页面渲染、交互、文档上传、问答输入和结果展示。
+2. Spring Boot 后端负责业务接口、MySQL 持久化、文件落盘和调用 RAG 服务。
+3. RAG 服务负责文档解析、文本分块、Embedding、向量检索和问答生成。
+4. MySQL 保存业务数据，Chroma 保存向量索引，原始文件保存在本地上传目录。
 
-建议使用 Ubuntu/Linux 环境运行。
+---
+
+## 功能全景
+
+### 工作台
+
+- 文档、解析、对话和格式统计
+- 最近上传文档
+- 最新动态
+- 处理状态概览
+- 快捷入口跳转
+
+### 文档管理
+
+- 上传 PDF、TXT、Word、Excel
+- 批量上传
+- 查看文档状态
+- 日期、状态和来源筛选
+- 下载原文
+- 删除文档
+- 重新处理文档
+
+### 文档处理详情
+
+- 查看处理流程
+- 查看真实处理耗时
+- 查看文本提取指标
+- 预览文本块
+- 查看向量索引状态
+- 查看当前模型配置
+
+### 文档问答
+
+- 选择指定文档提问
+- 检索相关片段
+- 生成引用式回答
+- Markdown 渲染
+- LaTeX 公式渲染
+- 引用片段高亮与详情查看
+- 支持流式输出
+
+### 对话历史
+
+- 新建会话
+- 切换会话
+- 删除会话
+- 导出对话
+- 查看历史引用
+
+### 系统设置
+
+- LLM 模型选择
+- Embedding 模型选择
+- RAG 策略参数配置
+- 系统提示词配置
+- 模型连接状态查看
+- 配置自动持久化
+
+---
+
+## 数据库设计
+
+系统使用 MySQL 保存业务数据，后端启动时会根据 `backend/src/main/resources/schema.sql` 自动初始化表结构。向量数据由 Chroma 独立保存，原始上传文件保存在本地文件目录中。
+
+### 核心数据表
+
+| 表名 | 说明 |
+| --- | --- |
+| `documents` | 文档主表，保存文件名、格式、来源、状态、大小、存储路径、RAG 文档 ID、分块数、向量数、错误信息、上传时间和更新时间。 |
+| `document_processing_steps` | 文档处理步骤表，保存每个文档在上传、文本提取、文本分块、向量化、存储完成等阶段的状态、说明、时间和顺序。 |
+| `document_activity_events` | 文档动态表，保存工作台“最新动态”所需的上传、删除、处理完成、处理失败等事件。 |
+| `chat_sessions` | 对话会话表，按文档保存会话标题、状态、创建时间和更新时间。 |
+| `chat_messages` | 对话消息表，保存用户消息、AI 回复、消息状态、错误信息和创建时间。 |
+| `chat_citations` | 引用片段表，保存 AI 回复关联的文档片段、相似度、片段编号、页码和引用文本。 |
+| `system_settings` | 系统配置表，保存 LLM、Embedding、向量库、分块、检索和生成参数。 |
+
+### 存储边界
+
+| 数据类型 | 存储位置 |
+| --- | --- |
+| 文档元数据、处理状态、对话记录、引用片段、系统配置 | MySQL |
+| 原始上传文件 | `uploads/` |
+| 文本向量和向量索引 | `rag-service/rag_data/chroma/` |
+| API Key 和本地端口配置 | `.env` |
+
+这种拆分可以避免把大文件和高维向量直接塞进业务表，同时让文档状态、对话历史和系统配置保持可查询、可维护。
+
+---
+
+## 快速开始
+
+### 1. 克隆项目
+
+```bash
+git clone https://github.com/ofb241223-dotcom/RAG-LLM.git
+cd RAG-LLM
+```
+
+### 2. 准备环境
+
+建议环境：
 
 - Node.js 20+
 - Java 21+
 - Maven 3.9+
 - Python 3.11+
 - MySQL 8+
-- LibreOffice，只有解析 `.doc` 老 Word 文件时需要
+- LibreOffice，用于解析老格式 `.doc` 文件
 
-检查命令示例：
+检查命令：
 
 ```bash
 node -v
@@ -60,53 +374,9 @@ python3 --version
 mysql --version
 ```
 
-## 首次运行
+### 3. 创建 MySQL 数据库
 
-### 1. 克隆项目
-
-```bash
-git clone https://github.com/ofb241223-dotcom/RAG-LLM.git
-cd RAG-LLM
-```
-
-### 2. 准备环境变量
-
-复制模板：
-
-```bash
-cp .env.example .env
-```
-
-编辑 `.env`，至少需要配置：
-
-```properties
-BACKEND_PORT=8080
-FRONTEND_PORT=5176
-RAG_SERVICE_PORT=8000
-
-RAG_DB_URL=jdbc:mysql://localhost:3306/rag_llm?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
-RAG_DB_USERNAME=rag_llm
-RAG_DB_PASSWORD=rag_llm_password
-
-MODEL_PROVIDER=google
-GOOGLE_EMBEDDING_API_KEY=你的_Google_Embedding_Key
-GOOGLE_LLM_API_KEY=你的_Google_LLM_Key
-GOOGLE_EMBEDDING_MODEL=gemini-embedding-001
-GOOGLE_LLM_MODEL=gemini-3.1-flash-lite
-```
-
-如果要使用 OpenRouter，可以同时配置：
-
-```properties
-OPENROUTER_API_KEY=你的_OpenRouter_Key
-OPENROUTER_EMBEDDING_MODEL=openai/text-embedding-3-small
-```
-
-注意：`.env` 已被 `.gitignore` 忽略，不要把真实 API Key 提交到仓库。
-
-### 3. 创建 MySQL 数据库和用户
-
-如果本机还没有数据库，可以用 root 用户执行：
+使用 MySQL root 用户执行：
 
 ```sql
 CREATE DATABASE IF NOT EXISTS rag_llm
@@ -120,9 +390,40 @@ GRANT ALL PRIVILEGES ON rag_llm.* TO 'rag_llm'@'localhost';
 FLUSH PRIVILEGES;
 ```
 
-后端启动时会自动初始化需要的表结构。
+### 4. 配置环境变量
 
-### 4. 安装依赖
+复制模板：
+
+```bash
+cp .env.example .env
+```
+
+编辑 `.env`，至少配置：
+
+```properties
+BACKEND_PORT=8080
+VITE_API_BASE_URL=http://127.0.0.1:8080/api
+RAG_DB_URL=jdbc:mysql://localhost:3306/rag_llm?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+RAG_DB_USERNAME=rag_llm
+RAG_DB_PASSWORD=rag_llm_password
+
+RAG_SERVICE_PORT=8000
+RAG_SERVICE_URL=http://localhost:8000
+CHROMA_PERSIST_DIR=./rag_data/chroma
+UPLOAD_STORAGE_DIR=./uploads
+
+MODEL_PROVIDER=google
+GOOGLE_EMBEDDING_API_KEY=replace-with-your-google-embedding-key
+GOOGLE_LLM_API_KEY=replace-with-your-google-llm-key
+GOOGLE_EMBEDDING_MODEL=gemini-embedding-001
+GOOGLE_LLM_MODEL=gemini-3.1-flash-lite
+OPENROUTER_API_KEY=replace-with-your-openrouter-key
+OPENROUTER_EMBEDDING_MODEL=openai/text-embedding-3-small
+```
+
+`.env` 已被 `.gitignore` 忽略，不要把真实 API Key 提交到仓库。
+
+### 5. 安装依赖
 
 前端依赖：
 
@@ -132,7 +433,7 @@ npm install
 cd ..
 ```
 
-Python RAG 服务依赖：
+RAG 服务依赖：
 
 ```bash
 cd rag-service
@@ -143,24 +444,18 @@ cd ..
 
 后端 Maven 依赖会在第一次启动或测试时自动下载。
 
-## 启动项目
+### 6. 启动服务
 
-项目需要同时启动 3 个服务：RAG 服务、Spring Boot 后端、React 前端。请分别打开 3 个终端，先进入项目根目录，再按下面顺序复制命令执行。
+项目需要同时启动 3 个服务。分别打开 3 个终端，并都先进入项目根目录。
 
-如果是刚 clone 下来的项目，先进入项目目录：
-
-```bash
-cd RAG-LLM
-```
-
-终端 1，启动 RAG 服务：
+终端 1：启动 RAG 服务。
 
 ```bash
 cd rag-service
 .venv/bin/uvicorn rag_service.main:app --host 0.0.0.0 --port 8000
 ```
 
-终端 2，启动后端：
+终端 2：启动 Spring Boot 后端。
 
 ```bash
 cd backend
@@ -170,57 +465,33 @@ set +a
 mvn spring-boot:run -Dspring-boot.run.arguments='--server.port=8080'
 ```
 
-终端 3，启动前端：
+终端 3：启动 React 前端。
 
 ```bash
 cd frontend
 VITE_API_BASE_URL=http://127.0.0.1:8080/api npm run dev -- --host 0.0.0.0 --port 5176
 ```
 
-三个终端都启动成功后，打开：
+启动完成后访问：
 
 ```text
-前端页面:   http://127.0.0.1:5176/
-后端状态:   http://127.0.0.1:8080/api/status
-RAG 状态:   http://127.0.0.1:8000/health
-后端接口:   http://127.0.0.1:8080/swagger-ui/index.html
-RAG 接口:    http://127.0.0.1:8000/docs
+前端页面: http://127.0.0.1:5176/
+后端状态: http://127.0.0.1:8080/api/status
+RAG 状态: http://127.0.0.1:8000/health
 ```
 
-重启某个服务时，在对应终端按 `Ctrl+C` 停止，再重新执行该终端的启动命令即可。如果想检查端口是否已经被占用：
+---
 
-```bash
-lsof -i :5176
-lsof -i :8080
-lsof -i :8000
-```
+## 接口文档
 
-如果需要停止某个端口上的旧进程，可以先用 `lsof` 找到 PID，再执行：
-
-```bash
-kill <PID>
-```
-
-## 使用流程
-
-1. 打开 `http://127.0.0.1:5176/`。
-2. 进入“系统设置”，确认 LLM、Embedding、RAG 策略。
-3. 进入“上传文档”，上传 PDF、TXT、Word 或 Excel 文件。
-4. 上传完成后进入“文档中心”，确认状态为“已完成”。
-5. 点击文档详情，可以查看真实文本块和处理流程。
-6. 进入“文档问答”，选择文档并提问。
-7. 进入“对话历史”，查看、切换或删除历史会话。
-
-## 接口可视化与请求日志
-
-课堂演示时可以打开两个接口 UI：
+启动服务后可以访问：
 
 ```text
 Spring Boot Swagger UI: http://127.0.0.1:8080/swagger-ui/index.html
 FastAPI RAG Docs:       http://127.0.0.1:8000/docs
 ```
 
-后端还提供最近请求日志，能看到浏览器到 Spring Boot、Spring Boot 到 RAG、RAG 到模型或 MinerU 的调用摘要：
+请求日志接口：
 
 ```bash
 curl 'http://127.0.0.1:8080/api/observability/requests?limit=50'
@@ -230,47 +501,57 @@ curl 'http://127.0.0.1:8000/observability/requests?limit=50'
 curl -X DELETE 'http://127.0.0.1:8000/observability/requests'
 ```
 
-日志只记录方法、路径、状态码、耗时、模型名和摘要，不记录 API Key、Authorization、文件正文或大段请求体。
+请求日志只记录方法、路径、状态码、耗时、模型名和摘要，不记录 API Key、Authorization、文件正文或大段请求体。
 
-## 模型配置说明
+---
 
-当前默认推荐：
+## 模型配置
+
+默认推荐配置：
 
 - LLM：`gemini-3.1-flash-lite`
 - Embedding：`gemini-embedding-001`
 - 向量库：`Chroma`
 
-系统设置页面只负责选择模型和参数，不在前端填写 API Key。API Key 由 `.env` 提供，并由后端/RAG 服务读取。
+系统设置页面只负责选择模型和参数，不在前端填写 API Key。API Key 由 `.env` 提供，并由后端和 RAG 服务读取。
 
-可选模型会出现在系统设置页面中，包括 Google AI Studio 和 OpenRouter 的部分模型。模型是否可用取决于你的 API Key、账号额度和网络环境。当前已验证的 Google Embedding 选项是 `gemini-embedding-001` 和 `gemini-embedding-2`；`gemini-embedding-002` 不支持本项目当前使用的 `embedContent` 调用方式，因此不放入前端选项。OpenRouter Embedding 默认使用 `openai/text-embedding-3-small`。
-
-命令行测试 Google 模型连接：
+命令行测试 Google LLM：
 
 ```bash
 curl -s 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent' \
   -H 'Content-Type: application/json' \
   -H "x-goog-api-key: ${GOOGLE_LLM_API_KEY}" \
   -d '{"contents":[{"parts":[{"text":"请用一句话回复连接测试。"}]}]}'
+```
 
+命令行测试 Google Embedding：
+
+```bash
 curl -s 'https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent' \
   -H 'Content-Type: application/json' \
   -H "x-goog-api-key: ${GOOGLE_EMBEDDING_API_KEY}" \
   -d '{"content":{"parts":[{"text":"连接测试"}]},"taskType":"RETRIEVAL_QUERY"}'
 ```
 
-命令行测试 OpenRouter：
+命令行测试 OpenRouter LLM：
 
 ```bash
 curl -s 'https://openrouter.ai/api/v1/chat/completions' \
   -H "Authorization: Bearer ${OPENROUTER_API_KEY}" \
   -H 'Content-Type: application/json' \
   -d '{"model":"openai/gpt-oss-120b:free","messages":[{"role":"user","content":"请用一句话回复连接测试。"}]}'
+```
 
+命令行测试 OpenRouter Embedding：
+
+```bash
 curl -s 'https://openrouter.ai/api/v1/embeddings' \
   -H "Authorization: Bearer ${OPENROUTER_API_KEY}" \
   -H 'Content-Type: application/json' \
   -d '{"model":"openai/text-embedding-3-small","input":["连接测试"]}'
 ```
+
+---
 
 ## 测试与构建
 
@@ -302,28 +583,31 @@ cd frontend
 npm run build
 ```
 
-## 健康检查
-
-启动后可以用以下命令确认服务正常：
-
-```bash
-curl http://127.0.0.1:8000/health
-curl http://127.0.0.1:8080/api/status
-curl http://127.0.0.1:8080/api/settings
-curl http://127.0.0.1:8080/api/documents?size=5
-```
-
-如果前端提示“后端服务不可用”，先确认：
-
-```bash
-curl http://127.0.0.1:8080/api/status
-```
-
-如果 `curl` 返回 200，说明后端已启动，前端提示可能是后端重启期间留下的临时消息，刷新页面即可。
+---
 
 ## 常见问题
 
-### 1. 端口被占用
+### 1. 前端提示后端服务不可用
+
+先确认后端状态：
+
+```bash
+curl http://127.0.0.1:8080/api/status
+```
+
+如果后端没有响应，检查终端 2 是否启动成功，以及 `.env` 中的数据库配置是否正确。
+
+### 2. RAG 服务连接失败
+
+检查 RAG 服务：
+
+```bash
+curl http://127.0.0.1:8000/health
+```
+
+如果没有响应，检查终端 1 是否启动成功，以及 Python 依赖是否安装完成。
+
+### 3. 端口被占用
 
 默认端口：
 
@@ -331,73 +615,54 @@ curl http://127.0.0.1:8080/api/status
 - 后端：`8080`
 - RAG：`8000`
 
-可以在 `.env` 中改：
-
-```properties
-FRONTEND_PORT=5177
-BACKEND_PORT=8081
-RAG_SERVICE_PORT=8001
-VITE_API_BASE_URL=http://127.0.0.1:8081/api
-RAG_SERVICE_URL=http://127.0.0.1:8001
-```
-
-### 2. MySQL 连接失败
-
-检查数据库、用户名、密码是否和 `.env` 一致：
+查看占用：
 
 ```bash
-mysql -urag_llm -prag_llm_password rag_llm
+lsof -i :5176
+lsof -i :8080
+lsof -i :8000
 ```
 
-### 3. RAG 服务连接失败
+### 4. Word `.doc` 解析失败
 
-检查 RAG 服务：
-
-```bash
-curl http://127.0.0.1:8000/health
-tail -n 80 .runtime/logs/rag-service.log
-```
-
-### 4. 模型测试失败
-
-常见原因：
-
-- `.env` 没有填真实 API Key。
-- 当前网络无法访问模型服务。
-- 模型名称不可用或账号没有额度。
-- OpenRouter 免费模型临时不可用。
-
-### 5. Word `.doc` 解析失败
-
-`.docx` 可以直接解析，老格式 `.doc` 通常需要本机安装 LibreOffice：
+`.docx` 可以直接解析，老格式 `.doc` 通常需要安装 LibreOffice：
 
 ```bash
 sudo apt install libreoffice
 ```
 
-## 安全说明
+### 5. 模型调用失败
 
-- 不要提交 `.env`。
-- 不要把真实 API Key 写入 README、测试或前端代码。
-- 前端设置页面不保存密钥，只保存模型和参数。
-- 公开仓库中只保留 `.env.example` 作为模板。
+常见原因：
 
-## 当前开发状态
+- `.env` 没有填真实 API Key。
+- 当前网络无法访问模型服务。
+- 模型名称不可用。
+- 账号没有对应模型的额度。
+- OpenRouter 免费模型临时不可用。
 
-目前已经打通：
+---
+
+## 项目状态
+
+当前已经实现：
 
 - MySQL 持久化
-- 文档上传、解析、向量入库
-- PDF / TXT / Word / Excel 支持
-- 文档详情真实文本块查看
-- 文档问答和引用片段
+- PDF / TXT / Word / Excel 文档上传
+- 文档解析、分块、Embedding、向量入库
+- 文档中心与文档处理详情
+- 文档问答与引用片段
+- Markdown 与 LaTeX 渲染
 - 流式问答接口
 - 对话历史管理
 - 系统设置持久化
+- 请求可观测日志
+- Swagger UI 与 FastAPI Docs
 
-后续可继续优化：
+测试代码位于：
 
-- 逐页对照 UI 设计图精修视觉细节
-- 增加更细的文档解析指标
-- 增加用户登录和权限
-- 增加 Docker Compose 部署方式
+- `backend/src/test`
+- `frontend/src/**/*.test.tsx`
+- `rag-service/tests`
+
+这些测试用于验证接口、页面和 RAG 流程，是项目质量保障的一部分。
