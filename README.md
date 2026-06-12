@@ -60,11 +60,14 @@ RAG-LLM/
 ├── frontend/                         # React + Vite 前端应用
 │   ├── src/api/                       # 前端 API 请求封装
 │   ├── src/assets/                    # 前端图片与静态资源
+│   ├── src/data/                      # 前端静态数据与默认选项
 │   ├── src/features/                  # 工作台、文档、问答、设置等页面模块
+│   ├── src/test/                      # 前端测试环境与测试工具配置
 │   ├── src/types/                     # 前端 TypeScript 类型
 │   └── src/utils/                     # 通用工具函数
 ├── backend/                           # Spring Boot 后端服务
 │   ├── src/main/java/com/example/ragllm/
+│   │   ├── config/                    # 跨域、时钟等基础配置
 │   │   ├── document/                  # 文档、处理流程、对话、引用等业务接口
 │   │   ├── settings/                  # 系统设置与模型配置接口
 │   │   ├── observability/             # 请求日志与可观测接口
