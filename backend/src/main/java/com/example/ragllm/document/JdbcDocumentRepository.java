@@ -90,10 +90,16 @@ public class JdbcDocumentRepository implements DocumentRepository {
     public int markReadyDocumentsForReprocess() {
         return jdbcTemplate.update("""
                 UPDATE documents
-                SET status = ?, updated_at = CURRENT_TIMESTAMP(6)
+                SET status = ?,
+                    rag_document_id = NULL,
+                    chunk_count = NULL,
+                    vector_count = NULL,
+                    error_message = ?,
+                    updated_at = CURRENT_TIMESTAMP(6)
                 WHERE status = ?
                 """,
                 DocumentProcessingStatus.REPROCESS_REQUIRED.name(),
+                "模型或分块配置已变更，请重新处理文档。",
                 DocumentProcessingStatus.READY.name());
     }
 

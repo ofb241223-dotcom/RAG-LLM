@@ -357,6 +357,28 @@ class DocumentApiTest {
     }
 
     @Test
+    void hidesStaleChunkAndVectorCountsForReprocessRequiredDocuments() throws Exception {
+        upload("ready.pdf", "one");
+        jdbcTemplate.update("""
+                UPDATE documents
+                SET status = 'REPROCESS_REQUIRED', rag_document_id = 'old-rag-id', chunk_count = 22, vector_count = 22
+                WHERE id = 1
+                """);
+
+        mockMvc.perform(get("/api/documents/1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("REPROCESS_REQUIRED"))
+                .andExpect(jsonPath("$.chunkCount").doesNotExist())
+                .andExpect(jsonPath("$.vectorCount").doesNotExist());
+
+        mockMvc.perform(get("/api/documents"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[0].status").value("REPROCESS_REQUIRED"))
+                .andExpect(jsonPath("$.items[0].chunkCount").doesNotExist())
+                .andExpect(jsonPath("$.items[0].vectorCount").doesNotExist());
+    }
+
+    @Test
     void getMissingDocumentReturnsNotFound() throws Exception {
         mockMvc.perform(get("/api/documents/404"))
                 .andExpect(status().isNotFound())

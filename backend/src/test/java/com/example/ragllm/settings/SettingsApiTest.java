@@ -157,4 +157,34 @@ class SettingsApiTest {
         String after = jdbcTemplate.queryForObject("SELECT llm_api_key_encrypted FROM system_settings WHERE id = 1", String.class);
         assertThat(after).isEqualTo(before);
     }
+
+    @Test
+    void settingsChangeMarksReadyDocumentsForReprocessAndClearsStaleIndexMetrics() throws Exception {
+        jdbcTemplate.update("""
+                INSERT INTO documents (
+                  original_filename, format, source, status, size_bytes, storage_path, rag_document_id,
+                  chunk_count, vector_count, error_message, uploaded_at, updated_at
+                ) VALUES (
+                  '2025推免.pdf', 'PDF', 'MANUAL_UPLOAD', 'READY', 1024, '/tmp/2025.pdf', 'old-rag-id',
+                  22, 22, NULL, CURRENT_TIMESTAMP(6), CURRENT_TIMESTAMP(6)
+                )
+                """);
+
+        mockMvc.perform(put("/api/settings")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "embedding": {"provider": "google", "model": "gemini-embedding-2", "apiKey": "", "batchSize": 10}
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.embedding.reprocessRequiredCount").value(1));
+
+        var document = jdbcTemplate.queryForMap("SELECT status, rag_document_id, chunk_count, vector_count, error_message FROM documents WHERE original_filename = '2025推免.pdf'");
+        assertThat(document.get("STATUS")).isEqualTo("REPROCESS_REQUIRED");
+        assertThat(document.get("RAG_DOCUMENT_ID")).isNull();
+        assertThat(document.get("CHUNK_COUNT")).isNull();
+        assertThat(document.get("VECTOR_COUNT")).isNull();
+        assertThat(document.get("ERROR_MESSAGE")).isEqualTo("模型或分块配置已变更，请重新处理文档。");
+    }
 }

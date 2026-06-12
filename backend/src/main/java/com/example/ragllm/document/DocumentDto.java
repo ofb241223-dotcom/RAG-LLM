@@ -16,6 +16,7 @@ public record DocumentDto(
         String errorMessage
 ) {
     public static DocumentDto from(DocumentRecord record) {
+        boolean requiresReprocess = record.status() == DocumentProcessingStatus.REPROCESS_REQUIRED;
         return new DocumentDto(
                 record.id(),
                 record.originalFilename(),
@@ -25,9 +26,9 @@ public record DocumentDto(
                 record.sizeBytes(),
                 record.uploadedAt(),
                 record.updatedAt(),
-                record.chunkCount(),
-                record.vectorCount(),
-                record.errorMessage()
+                requiresReprocess ? null : record.chunkCount(),
+                requiresReprocess ? null : record.vectorCount(),
+                requiresReprocess && record.errorMessage() == null ? "模型或分块配置已变更，请重新处理文档。" : record.errorMessage()
         );
     }
 }

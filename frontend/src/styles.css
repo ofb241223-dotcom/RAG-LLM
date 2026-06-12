@@ -609,6 +609,11 @@ button {
   background: #fff0f0;
 }
 
+.status-badge.reprocess_required {
+  color: #9a6a00;
+  background: #fff6bf;
+}
+
 .row-error {
   display: block;
   margin-top: 5px;

@@ -237,6 +237,52 @@ describe('DocumentDetailPage', () => {
     expect(screen.queryByRole('button', { name: '去文档问答' })).not.toBeInTheDocument();
   });
 
+  it('treats reprocess-required documents as unavailable current results even when old processing data exists', async () => {
+    const reprocessRequiredDocument: DocumentDto = {
+      ...readyDocument,
+      status: 'REPROCESS_REQUIRED',
+      updatedAt: '2024-05-20T15:10:00+08:00',
+      chunkCount: 22,
+      vectorCount: 22,
+      errorMessage: '模型或分块配置已变更，请重新处理文档。',
+    };
+    const parsingAfterReprocess: DocumentDto = {
+      ...reprocessRequiredDocument,
+      status: 'PARSING',
+    };
+    const documentsApi: Pick<DocumentsApi, 'get' | 'chunks' | 'processing' | 'reprocess' | 'downloadUrl'> = {
+      get: vi.fn(async () => reprocessRequiredDocument),
+      chunks: vi.fn(async () => []),
+      processing: vi.fn(async () => readySteps),
+      reprocess: vi.fn(async () => parsingAfterReprocess),
+      downloadUrl: vi.fn((id) => `/api/documents/${id}/download`),
+    };
+
+    render(
+      <DocumentDetailPage
+        documentId={101}
+        documentsApi={documentsApi}
+        settingsApi={{ get: vi.fn(async () => settings) }}
+        onAskDocument={() => undefined}
+        onBack={() => undefined}
+      />,
+    );
+
+    await waitFor(() => expect(documentsApi.get).toHaveBeenCalledWith(101));
+
+    expect(screen.getByText('共生成 0 个文本块')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /查看全部 0 个文本块/ })).toBeDisabled();
+    expect(screen.getByText('当前配置下暂无可用文本块')).toBeInTheDocument();
+    expect(screen.getByText('配置已变更，请点击重新处理生成新的文本块和向量索引。')).toBeInTheDocument();
+    expect(screen.getAllByText('需重新处理').length).toBeGreaterThanOrEqual(2);
+    expect(screen.queryByText('处理中')).not.toBeInTheDocument();
+    expect(screen.queryByText('处理完成')).not.toBeInTheDocument();
+
+    const flow = screen.getByRole('list', { name: '文档处理流程' });
+    expect(flow.querySelectorAll('.complete')).toHaveLength(0);
+    expect(within(flow).getAllByText('等待重新处理')).toHaveLength(6);
+  });
+
   it('shows live backend processing steps immediately after reprocess starts', async () => {
     const parsingDocument: DocumentDto = {
       ...readyDocument,

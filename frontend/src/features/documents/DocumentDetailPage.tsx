@@ -95,6 +95,10 @@ function getDisplayVectorCount(document: DocumentDto): number {
   return document.status === 'READY' ? getDisplayChunkCount(document) : 0;
 }
 
+function needsReprocess(document: DocumentDto): boolean {
+  return document.status === 'REPROCESS_REQUIRED';
+}
+
 const stepIcons: Record<string, LucideIcon> = {
   upload: FileText,
   extract: FileText,
@@ -147,6 +151,27 @@ function buildFallbackSteps(document: DocumentDto): DetailStep[] {
   });
 }
 
+function buildReprocessRequiredSteps(): DetailStep[] {
+  const definitions = [
+    { key: 'upload', label: '文件上传', icon: FileText },
+    { key: 'extract', label: '文本提取', icon: FileText },
+    { key: 'split', label: '文本分块', icon: Layers },
+    { key: 'vector', label: '向量化处理', icon: Box },
+    { key: 'index', label: '索引构建', icon: SearchCheck },
+    { key: 'stored', label: '存储完成', icon: Database },
+  ];
+
+  return definitions.map((step) => ({
+    key: step.key,
+    label: step.label,
+    detail: '等待重新处理',
+    time: '-',
+    occurredAt: null,
+    icon: step.icon,
+    state: 'pending' as const,
+  }));
+}
+
 function processingDuration(document: DocumentDto, steps: DetailStep[]): string {
   if (!isTerminalStatus(document.status) || document.status === 'REPROCESS_REQUIRED') {
     return '-';
@@ -168,6 +193,16 @@ function processingStartedAt(document: DocumentDto, steps: DetailStep[]): Date {
   }
   const uploadStep = steps.find((step) => step.key === 'upload' && step.occurredAt);
   return new Date(uploadStep?.occurredAt ?? document.uploadedAt);
+}
+
+function processingStartedAtText(document: DocumentDto, steps: DetailStep[]): string {
+  if (needsReprocess(document)) return '-';
+  return formatDateTime(processingStartedAt(document, steps).toISOString());
+}
+
+function processingFinishedAtText(document: DocumentDto): string {
+  if (needsReprocess(document) || !isTerminalStatus(document.status)) return '-';
+  return formatDateTime(document.updatedAt);
 }
 
 function chunkId(chunk: DocumentChunkDto): string {
@@ -349,11 +384,14 @@ export function DocumentDetailPage({
 
   const detail = useMemo(() => {
     if (!document) return null;
-    const chunks = buildPreviewChunks(documentChunks, settings?.rag.chunkOverlap ?? 0);
-    const chunkCount = chunks.length || getDisplayChunkCount(document);
-    const vectorCount = document.vectorCount ?? chunkCount;
+    const resultUnavailable = needsReprocess(document);
+    const chunks = resultUnavailable ? [] : buildPreviewChunks(documentChunks, settings?.rag.chunkOverlap ?? 0);
+    const chunkCount = resultUnavailable ? 0 : chunks.length || getDisplayChunkCount(document);
+    const vectorCount = resultUnavailable ? 0 : document.vectorCount ?? chunkCount;
     const isIndexed = document.status === 'READY';
-    const characters = chunks.length > 0
+    const characters = resultUnavailable
+      ? 0
+      : chunks.length > 0
       ? chunks.reduce((total, chunk) => total + chunk.characters, 0)
       : estimateCharacterCount(document);
     const vectorDimension = inferEmbeddingDimension(settings?.embedding.model);
@@ -363,7 +401,9 @@ export function DocumentDetailPage({
       chunkCount,
       vectorCount,
       chunks,
-      steps: processingSteps.length > 0 ? mapProcessingSteps(processingSteps) : buildFallbackSteps(document),
+      steps: resultUnavailable
+        ? buildReprocessRequiredSteps()
+        : processingSteps.length > 0 ? mapProcessingSteps(processingSteps) : buildFallbackSteps(document),
       vectorDimension,
       averageChunkCharacters: averageChunkLength(chunks),
       maxChunkCharacters: maxChunkLength(chunks),
@@ -382,6 +422,8 @@ export function DocumentDetailPage({
       setProcessingSteps(await documentsApi.processing(document.id));
       if (nextDocument.status === 'READY') {
         setDocumentChunks(await documentsApi.chunks(document.id));
+      } else {
+        setDocumentChunks([]);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : '重新处理失败');
@@ -413,7 +455,6 @@ export function DocumentDetailPage({
   }
 
   const steps = detail.steps;
-  const startedAt = processingStartedAt(document, steps);
   const duration = processingDuration(document, steps);
   const embeddingModel = settings?.embedding.model ?? '未读取';
   const embeddingProvider = providerLabel(settings?.embedding.provider);
@@ -482,11 +523,11 @@ export function DocumentDetailPage({
               </div>
               <div>
                 <dt>处理开始时间</dt>
-                <dd>{formatDateTime(startedAt.toISOString())}</dd>
+                <dd>{processingStartedAtText(document, steps)}</dd>
               </div>
               <div>
                 <dt>处理完成时间</dt>
-                <dd>{formatDateTime(document.updatedAt)}</dd>
+                <dd>{processingFinishedAtText(document)}</dd>
               </div>
               <div>
                 <dt>处理耗时</dt>
@@ -538,8 +579,12 @@ export function DocumentDetailPage({
                 ))
               ) : (
                 <div className="detail-chunk-empty">
-                  <strong>暂无可预览文本块</strong>
-                  <small>索引构建成功后会显示 Chunk 内容、字符数和 Token 估算。</small>
+                  <strong>{needsReprocess(document) ? '当前配置下暂无可用文本块' : '暂无可预览文本块'}</strong>
+                  <small>
+                    {needsReprocess(document)
+                      ? '配置已变更，请点击重新处理生成新的文本块和向量索引。'
+                      : '索引构建成功后会显示 Chunk 内容、字符数和 Token 估算。'}
+                  </small>
                 </div>
               )}
             </div>
@@ -648,13 +693,23 @@ export function DocumentDetailPage({
           <div className={`detail-complete-card ${document.status.toLowerCase()}`}>
             <CheckCircle2 size={32} />
             <div>
-              <strong>{document.status === 'READY' ? '处理完成' : document.status === 'FAILED' ? '处理失败' : '处理中'}</strong>
+              <strong>
+                {document.status === 'READY'
+                  ? '处理完成'
+                  : document.status === 'FAILED'
+                    ? '处理失败'
+                    : document.status === 'REPROCESS_REQUIRED'
+                      ? '需重新处理'
+                      : '处理中'}
+              </strong>
               <span>
                 {document.status === 'READY'
                   ? '文档已成功处理，可用于问答'
                   : document.status === 'FAILED'
                     ? document.errorMessage ?? '处理过程出现错误'
-                    : '文档正在解析、分块或向量化，请稍候'}
+                    : document.status === 'REPROCESS_REQUIRED'
+                      ? '模型或分块配置已变更，请点击重新处理'
+                      : '文档正在解析、分块或向量化，请稍候'}
               </span>
               {document.status === 'READY' ? (
                 <button className="primary-button" type="button" onClick={() => onAskDocument(document)}>
