@@ -466,7 +466,6 @@ cp .env.example .env
 
 ```properties
 BACKEND_PORT=8080
-VITE_API_BASE_URL=http://127.0.0.1:8080/api
 RAG_DB_URL=jdbc:mysql://localhost:3306/rag_llm?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
 RAG_DB_USERNAME=rag_llm
 RAG_DB_PASSWORD=rag_llm_password
@@ -533,7 +532,7 @@ mvn spring-boot:run -Dspring-boot.run.arguments='--server.port=8080'
 
 ```bash
 cd frontend
-VITE_API_BASE_URL=http://127.0.0.1:8080/api npm run dev -- --host 0.0.0.0 --port 5176
+npm run dev -- --host 0.0.0.0 --port 5176
 ```
 
 启动完成后访问：
@@ -543,6 +542,8 @@ VITE_API_BASE_URL=http://127.0.0.1:8080/api npm run dev -- --host 0.0.0.0 --port
 后端状态: http://127.0.0.1:8080/api/status
 RAG 状态: http://127.0.0.1:8000/health
 ```
+
+如果在同一局域网的 Windows 电脑访问开发中的前端，打开 `http://Linux电脑当前IP:5176/`。前端默认通过 `/api` 代理转发到 Linux 本机的 Spring Boot 后端，不需要把 IP 写进环境变量。
 
 ---
 

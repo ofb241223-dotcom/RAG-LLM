@@ -25,6 +25,23 @@ describe('AnswerContent', () => {
     expect(onSelectCitation).toHaveBeenCalledWith(citation);
   });
 
+  it('renders model block LaTeX delimiters across multiple lines', () => {
+    render(
+      <AnswerContent
+        content={'计算过程\n\n\\\\[\n\\\\frac{76.5 + 91.5 + 78.3}{3}\n= 82.1\n\\\\]\n\n结果来自表格 [1]。'}
+        citations={[citation]}
+        messageId={105}
+        onSelectCitation={() => undefined}
+      />,
+    );
+
+    const answer = screen.getByTestId('assistant-answer-105');
+    expect(answer.textContent).not.toContain('\\[');
+    expect(answer.textContent).not.toContain('\\]');
+    expect(answer.querySelector('.katex')).not.toBeNull();
+    expect(screen.getByRole('button', { name: '引用 1' })).toBeInTheDocument();
+  });
+
   it('keeps standalone citation marker lines inline with the preceding list item', () => {
     const onSelectCitation = vi.fn();
     const secondCitation = { ...citation, key: '102:1:chunk-2', markerIndex: 2, chunkId: 'chunk-2' };

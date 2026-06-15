@@ -95,6 +95,7 @@ function createChatApi(): Pick<ChatApi, 'listSessions' | 'listDocuments'> {
       originalFilename: '最新上传.pdf',
       format: 'PDF',
       sizeBytes: 1024,
+      uploadedAt: '2026-06-11T03:58:00+08:00',
       chunkCount: 3,
       vectorCount: 3,
       sessionCount: 2,
@@ -105,6 +106,7 @@ function createChatApi(): Pick<ChatApi, 'listSessions' | 'listDocuments'> {
       originalFilename: '问答文档.docx',
       format: 'DOCX',
       sizeBytes: 2048,
+      uploadedAt: '2026-06-11T03:00:00+08:00',
       chunkCount: 2,
       vectorCount: 2,
       sessionCount: 1,
@@ -163,6 +165,7 @@ describe('DashboardPage', () => {
     expect(within(dialog).getAllByRole('listitem')).toHaveLength(14);
     expect(within(dialog).getByText('删除了文档《旧文档.txt》')).toBeInTheDocument();
     expect(within(dialog).getByText('上传了文档《问答文档.docx》')).toBeInTheDocument();
+    expect(within(dialog).getByText('上传了文档《问答文档.docx》').closest('.activity-dialog-item-body')).not.toBeNull();
 
     fireEvent.click(within(dialog).getByRole('button', { name: '关闭全部动态' }));
     expect(screen.queryByRole('dialog', { name: '全部动态' })).not.toBeInTheDocument();

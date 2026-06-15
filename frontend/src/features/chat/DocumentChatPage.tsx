@@ -1,5 +1,5 @@
-import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
-import { Bot, ChevronRight, Eraser, FileSearch, SendHorizontal, Settings2, Target } from 'lucide-react';
+import { type FormEvent, type KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { Bot, ChevronRight, Eraser, FileSearch, History, MessageCircle, Plus, SendHorizontal, Settings2, Target, X } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import rehypeKatex from 'rehype-katex';
 import rehypeRaw from 'rehype-raw';
@@ -55,10 +55,15 @@ export function DocumentChatPage({ chatApi = defaultChatApi, settingsApi = defau
   const [selectedCitationKey, setSelectedCitationKey] = useState<string | null>(null);
   const [citationMessageId, setCitationMessageId] = useState<number | null>(null);
   const [expandedCitation, setExpandedCitation] = useState<ChatCitationDto | null>(null);
+  const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
+  const [creatingSession, setCreatingSession] = useState(false);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const questionInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const threadRef = useRef<HTMLDivElement | null>(null);
+  const threadEndRef = useRef<HTMLDivElement | null>(null);
+  const autoScrollRef = useRef(true);
 
   useEffect(() => {
     let alive = true;
@@ -162,26 +167,45 @@ export function DocumentChatPage({ chatApi = defaultChatApi, settingsApi = defau
     input.classList.toggle('is-scrollable', input.scrollHeight > 126);
   }, [question]);
 
-  const createSession = async (title: string) => {
+  useEffect(() => {
+    if (!autoScrollRef.current) return;
+    threadEndRef.current?.scrollIntoView?.({ block: 'end' });
+  }, [activeSession?.id, activeSession?.messages.length, streamingDraft?.answer, streamingDraft?.question]);
+
+  const createSession = async (title = '新对话') => {
     if (!selectedDocumentId) return null;
-    const detail = await chatApi.createSession({ documentId: selectedDocumentId, title });
-    setActiveSession(detail);
-    setCitationMessageId(null);
-    setSelectedCitationKey(null);
-    setSessions((current) => [toSessionSummary(detail), ...current.filter((session) => session.id !== detail.id)]);
-    return detail;
+    setCreatingSession(true);
+    setError(null);
+    try {
+      const detail = await chatApi.createSession({ documentId: selectedDocumentId, title });
+      autoScrollRef.current = true;
+      setActiveSession(detail);
+      setCitationMessageId(null);
+      setSelectedCitationKey(null);
+      setSessions((current) => [toSessionSummary(detail), ...current.filter((session) => session.id !== detail.id)]);
+      return detail;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '新建对话失败');
+      return null;
+    } finally {
+      setCreatingSession(false);
+    }
   };
 
-  const sendQuestion = async (event: FormEvent) => {
-    event.preventDefault();
+  const submitQuestion = async () => {
     const trimmedQuestion = question.trim();
     if (!trimmedQuestion || !selectedDocumentId || submitting) return;
 
+    autoScrollRef.current = true;
     setSubmitting(true);
     setError(null);
+    setQuestion('');
     try {
       const session = activeSession ?? (await createSession(titleFromQuestion(trimmedQuestion)));
-      if (!session) return;
+      if (!session) {
+        setQuestion(trimmedQuestion);
+        return;
+      }
       let detail: ChatSessionDetailDto;
       if (settings?.llm.streamOutput) {
         const startedAt = new Date().toISOString();
@@ -199,23 +223,81 @@ export function DocumentChatPage({ chatApi = defaultChatApi, settingsApi = defau
       setSessions((current) => [toSessionSummary(detail), ...current.filter((item) => item.id !== detail.id)]);
       setCitationMessageId(latestAssistant?.id ?? null);
       setSelectedCitationKey(latestAssistant?.citations[0]?.key ?? null);
-      setQuestion('');
       setStreamingDraft(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : '发送问题失败');
+      setQuestion(trimmedQuestion);
       setStreamingDraft(null);
     } finally {
       setSubmitting(false);
     }
   };
 
+  const sendQuestion = (event: FormEvent) => {
+    event.preventDefault();
+    void submitQuestion();
+  };
+
+  const insertQuestionNewline = () => {
+    const input = questionInputRef.current;
+    const start = input?.selectionStart ?? question.length;
+    const end = input?.selectionEnd ?? question.length;
+    const nextQuestion = `${question.slice(0, start)}\n${question.slice(end)}`;
+    setQuestion(nextQuestion);
+    window.requestAnimationFrame(() => {
+      questionInputRef.current?.setSelectionRange(start + 1, start + 1);
+    });
+  };
+
+  const handleQuestionKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key !== 'Enter' || event.nativeEvent.isComposing) return;
+    if (event.ctrlKey || event.metaKey) {
+      event.preventDefault();
+      insertQuestionNewline();
+      return;
+    }
+    if (!event.shiftKey && !event.altKey) {
+      event.preventDefault();
+      void submitQuestion();
+    }
+  };
+
   const selectDocument = (documentId: number) => {
+    autoScrollRef.current = true;
     setSelectedDocumentId(documentId);
     setActiveSession(null);
     setQuestion('');
     setSelectedCitationKey(null);
     setCitationMessageId(null);
     setExpandedCitation(null);
+  };
+
+  const selectSession = async (sessionId: number) => {
+    autoScrollRef.current = true;
+    setError(null);
+    try {
+      const detail = await chatApi.getSession(sessionId);
+      const latestAssistant = latestAssistantMessage(detail.messages);
+      setActiveSession(detail);
+      setCitationMessageId(latestAssistant?.id ?? null);
+      setSelectedCitationKey(latestAssistant?.citations[0]?.key ?? null);
+      setHistoryDialogOpen(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '对话详情加载失败');
+    }
+  };
+
+  const disableAutoScrollForUserNavigation = () => {
+    autoScrollRef.current = false;
+  };
+
+  const restoreAutoScrollWhenAtBottom = () => {
+    const thread = threadRef.current;
+    if (!thread) return;
+    const distanceToBottom = thread.scrollHeight - thread.scrollTop - thread.clientHeight;
+    if (distanceToBottom <= 24) {
+      autoScrollRef.current = true;
+    }
   };
 
   return (
@@ -266,26 +348,49 @@ export function DocumentChatPage({ chatApi = defaultChatApi, settingsApi = defau
                   <strong>{selectedDocument?.originalFilename ?? (loading ? '正在加载文档...' : '暂无 READY 文档')}</strong>
                   <em>
                     {selectedDocument
-                      ? `${selectedDocument.format} · ${formatBytes(selectedDocument.sizeBytes)} · 上传于 ${formatDateTime(selectedDocument.lastActiveAt ?? null)}`
+                      ? `${selectedDocument.format} · ${formatBytes(selectedDocument.sizeBytes)} · 上传于 ${formatDateTime(selectedDocument.uploadedAt)}`
                       : '请先上传并解析文档'}
                   </em>
                 </span>
               </div>
             </div>
-            <select aria-label="更换文档" value={selectedDocumentId ?? ''} onChange={(event) => selectDocument(Number(event.target.value))}>
-              {documents.map((document) => (
-                <option key={document.id} value={document.id}>
-                  {document.originalFilename}
-                </option>
-              ))}
-            </select>
+            <div className="current-document-actions">
+              <select aria-label="更换文档" value={selectedDocumentId ?? ''} onChange={(event) => selectDocument(Number(event.target.value))}>
+                {documents.map((document) => (
+                  <option key={document.id} value={document.id}>
+                    {document.originalFilename}
+                  </option>
+                ))}
+              </select>
+              <button className="secondary-button compact-action" disabled={!selectedDocumentId || creatingSession} type="button" onClick={() => void createSession()}>
+                <Plus size={16} />
+                新建对话
+              </button>
+              <button className="secondary-button compact-action" disabled={!selectedDocumentId} type="button" onClick={() => setHistoryDialogOpen(true)}>
+                <History size={16} />
+                历史对话
+              </button>
+            </div>
           </div>
 
-          <div className="document-chat-thread" aria-label="文档问答消息">
+          <div
+            aria-label="文档问答消息"
+            className="document-chat-thread"
+            ref={threadRef}
+            onScroll={restoreAutoScrollWhenAtBottom}
+            onTouchMove={disableAutoScrollForUserNavigation}
+            onWheel={disableAutoScrollForUserNavigation}
+          >
             {!activeSession ? (
               <div className="empty-chat-state">
                 <FileSearch size={28} />
                 <strong>请选择一个已解析文档，或直接输入问题开始问答。</strong>
+              </div>
+            ) : null}
+            {activeSession && activeSession.messages.length === 0 ? (
+              <div className="empty-chat-state compact-empty-state">
+                <MessageCircle size={28} />
+                <strong>当前对话暂无消息，可以直接输入问题开始。</strong>
               </div>
             ) : null}
             {activeSession?.messages.map((message) => {
@@ -343,6 +448,7 @@ export function DocumentChatPage({ chatApi = defaultChatApi, settingsApi = defau
                 </article>
               </>
             ) : null}
+            <div className="chat-scroll-anchor" ref={threadEndRef} />
           </div>
 
           <form className="qa-composer" onSubmit={sendQuestion}>
@@ -353,6 +459,7 @@ export function DocumentChatPage({ chatApi = defaultChatApi, settingsApi = defau
               ref={questionInputRef}
               value={question}
               onChange={(event) => setQuestion(event.target.value)}
+              onKeyDown={handleQuestionKeyDown}
             />
             <span>{question.length} / 2000</span>
             <button className="primary-icon-button" disabled={!question.trim() || submitting || !selectedDocumentId} type="submit" aria-label="发送问题">
@@ -418,6 +525,39 @@ export function DocumentChatPage({ chatApi = defaultChatApi, settingsApi = defau
               <button className="primary-button" type="button" onClick={() => setExpandedCitation(null)}>
                 关闭
               </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
+      {historyDialogOpen ? (
+        <div className="dialog-backdrop" role="presentation">
+          <section aria-labelledby="chat-history-dialog-title" aria-modal="true" className="confirm-dialog chat-session-dialog plain-dialog" role="dialog">
+            <div className="activity-dialog-heading">
+              <div>
+                <h2 id="chat-history-dialog-title">历史对话</h2>
+                <p>仅显示当前文档下的对话记录。</p>
+              </div>
+              <button aria-label="关闭历史对话" className="icon-button" type="button" onClick={() => setHistoryDialogOpen(false)}>
+                <X size={18} />
+              </button>
+            </div>
+            <div className="chat-session-dialog-list" aria-label="当前文档历史对话">
+              {sessions.length === 0 ? <p className="table-state">当前文档暂无历史对话。</p> : null}
+              {sessions.map((session) => (
+                <button
+                  className={session.id === activeSession?.id ? 'chat-session-dialog-item active' : 'chat-session-dialog-item'}
+                  key={session.id}
+                  type="button"
+                  onClick={() => void selectSession(session.id)}
+                >
+                  <span>
+                    <strong>{session.title}</strong>
+                    <small>{session.messageCount} 条消息 · 更新于 {formatDateTime(session.updatedAt)}</small>
+                  </span>
+                  <ChevronRight size={16} />
+                </button>
+              ))}
             </div>
           </section>
         </div>

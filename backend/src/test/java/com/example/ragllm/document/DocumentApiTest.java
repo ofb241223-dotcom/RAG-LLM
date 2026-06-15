@@ -636,7 +636,8 @@ class DocumentApiTest {
         mockMvc.perform(get("/api/chat/documents"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", hasSize(2)))
-                .andExpect(jsonPath("$[?(@.id == 1)].sessionCount").value(1));
+                .andExpect(jsonPath("$[?(@.id == 1)].sessionCount").value(1))
+                .andExpect(jsonPath("$[?(@.id == 1)].uploadedAt").isNotEmpty());
 
         mockMvc.perform(get("/api/chat/sessions")
                         .param("documentId", "1"))

@@ -88,15 +88,6 @@ function App() {
             </button>
           ))}
         </nav>
-
-        <div className="security-card">
-          <div>
-            <strong>企业级安全防护</strong>
-            <p>数据加密存储，访问可控可审计</p>
-            <button type="button" onClick={() => setMainView('settings')}>了解更多</button>
-          </div>
-          <img src={images.illustrations.securityCard} alt="" />
-        </div>
       </aside>
 
       <main className="workspace">

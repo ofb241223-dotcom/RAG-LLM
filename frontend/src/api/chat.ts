@@ -11,6 +11,7 @@ export interface ChatDocumentDto {
   originalFilename: string;
   format: DocumentFormat;
   sizeBytes: number;
+  uploadedAt: string;
   chunkCount?: number | null;
   vectorCount?: number | null;
   sessionCount: number;

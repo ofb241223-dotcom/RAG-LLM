@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { DocumentChatPage } from './DocumentChatPage';
 import type { ChatApi, ChatSessionDetailDto } from '../../api/chat';
@@ -86,6 +86,31 @@ describe('DocumentChatPage', () => {
     expect(within(citationPanel).queryByText('3.2 多头注意力机制')).not.toBeInTheDocument();
   });
 
+  it('shows the document upload time even when there is no chat activity yet', async () => {
+    const chatApi = createChatApi({
+      listDocuments: vi.fn(async () => [
+        {
+          id: 9,
+          originalFilename: '计算机科学与工程学院 推荐优秀应届本科毕业生免试攻读硕士学位研究生工作细则-2026年版本V2.pdf',
+          format: 'PDF' as const,
+          sizeBytes: 416 * 1024,
+          chunkCount: 6,
+          vectorCount: 6,
+          sessionCount: 0,
+          uploadedAt: '2026-06-15T09:48:00+08:00',
+          lastActiveAt: null,
+        },
+      ]),
+      listSessions: vi.fn(async () => []),
+    });
+
+    render(<DocumentChatPage chatApi={chatApi} settingsApi={settingsApi} initialDocumentId={9} />);
+
+    await waitFor(() => expect(chatApi.listSessions).toHaveBeenCalledWith(9));
+    expect(screen.getByText(/上传于 2026\/06\/15 09:48/u)).toBeInTheDocument();
+    expect(screen.queryByText(/上传于 暂无记录/u)).not.toBeInTheDocument();
+  });
+
   it('renders assistant markdown and LaTeX, then sends follow-up questions with topK', async () => {
     const nextDetail: ChatSessionDetailDto = {
       ...sessionDetail,
@@ -133,6 +158,211 @@ describe('DocumentChatPage', () => {
     const nextAnswer = await screen.findByTestId('assistant-answer-104');
     expect(nextAnswer.textContent).toContain('位置编码使用正弦和余弦函数表示');
     expect(nextAnswer.querySelector('.katex')).not.toBeNull();
+  });
+
+  it('creates a new conversation and switches history inside the document chat page', async () => {
+    const newSession: ChatSessionDetailDto = {
+      ...sessionDetail,
+      id: 12,
+      title: '新对话',
+      messages: [],
+      createdAt: '2024-05-20T10:30:00+08:00',
+      updatedAt: '2024-05-20T10:30:00+08:00',
+    };
+    const olderSession: ChatSessionDetailDto = {
+      ...sessionDetail,
+      id: 10,
+      title: '历史平均分问答',
+      messages: [
+        {
+          id: 201,
+          role: 'USER',
+          content: '历史问题',
+          status: 'SUCCESS',
+          createdAt: '2024-05-20T10:10:00+08:00',
+          citations: [],
+        },
+      ],
+    };
+    const chatApi = createChatApi({
+      listSessions: vi.fn(async () => [
+        ...sessionSummaries,
+        {
+          id: 10,
+          documentId: 1,
+          title: '历史平均分问答',
+          status: 'ACTIVE' as const,
+          messageCount: 1,
+          createdAt: '2024-05-20T10:10:00+08:00',
+          updatedAt: '2024-05-20T10:11:00+08:00',
+        },
+      ]),
+      createSession: vi.fn(async () => newSession),
+      getSession: vi.fn(async (sessionId) => (sessionId === 10 ? olderSession : sessionDetail)),
+    });
+
+    render(<DocumentChatPage chatApi={chatApi} settingsApi={settingsApi} initialDocumentId={1} />);
+
+    await screen.findByTestId('assistant-answer-102');
+    fireEvent.click(screen.getByRole('button', { name: '新建对话' }));
+
+    await waitFor(() => {
+      expect(chatApi.createSession).toHaveBeenCalledWith({ documentId: 1, title: '新对话' });
+    });
+    expect(await screen.findByText('当前对话暂无消息，可以直接输入问题开始。')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '历史对话' }));
+    const dialog = await screen.findByRole('dialog', { name: '历史对话' });
+    expect(within(dialog).getByText('Transformer 架构详解与注意力机制')).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('button', { name: /历史平均分问答/u }));
+
+    await waitFor(() => {
+      expect(chatApi.getSession).toHaveBeenCalledWith(10);
+    });
+    expect(screen.queryByRole('dialog', { name: '历史对话' })).not.toBeInTheDocument();
+    expect(screen.getByText('历史问题')).toBeInTheDocument();
+  });
+
+  it('follows new messages after sending but stops when the user scrolls the thread', async () => {
+    const scrollIntoView = vi.fn();
+    window.HTMLElement.prototype.scrollIntoView = scrollIntoView;
+    let streamHandlers: Parameters<ChatApi['streamMessage']>[2] | undefined;
+    let resolveStream: (detail: ChatSessionDetailDto) => void = () => undefined;
+    const streamingSettings = {
+      ...settings,
+      llm: {
+        ...settings.llm,
+        streamOutput: true,
+      },
+    };
+    const streamingSettingsApi = {
+      ...settingsApi,
+      get: vi.fn(async () => streamingSettings),
+    };
+    const streamedDetail: ChatSessionDetailDto = {
+      ...sessionDetail,
+      messages: [
+        ...sessionDetail.messages,
+        {
+          id: 103,
+          role: 'USER',
+          content: '继续解释',
+          status: 'SUCCESS',
+          createdAt: '2024-05-20T10:22:00+08:00',
+          citations: [],
+        },
+        {
+          id: 104,
+          role: 'ASSISTANT',
+          content: '流式回答完成。[1]',
+          status: 'SUCCESS',
+          createdAt: '2024-05-20T10:22:10+08:00',
+          citations: [{ ...citation, key: '104:1:110_2', markerIndex: 1, chunkId: '110_2', score: 0.89 }],
+        },
+      ],
+    };
+    const chatApi = createChatApi({
+      streamMessage: vi.fn((_sessionId, _request, handlers) => {
+        streamHandlers = handlers;
+        return new Promise<ChatSessionDetailDto>((resolve) => {
+          resolveStream = resolve;
+        });
+      }),
+    });
+
+    render(<DocumentChatPage chatApi={chatApi} settingsApi={streamingSettingsApi} initialDocumentId={1} />);
+
+    await screen.findByTestId('assistant-answer-102');
+    scrollIntoView.mockClear();
+    fireEvent.change(screen.getByLabelText('输入文档问题'), { target: { value: '继续解释' } });
+    fireEvent.keyDown(screen.getByLabelText('输入文档问题'), { key: 'Enter', code: 'Enter' });
+
+    await waitFor(() => {
+      expect(chatApi.streamMessage).toHaveBeenCalledWith(11, { question: '继续解释' }, expect.any(Object));
+    });
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
+    scrollIntoView.mockClear();
+
+    fireEvent.wheel(screen.getByLabelText('文档问答消息'));
+    await act(async () => {
+      streamHandlers?.onChunk?.('用户滚动后追加的内容');
+    });
+    expect(await screen.findByText(/用户滚动后追加的内容/u)).toBeInTheDocument();
+    expect(scrollIntoView).not.toHaveBeenCalled();
+
+    await act(async () => {
+      resolveStream(streamedDetail);
+    });
+  });
+
+  it('submits with Enter and inserts a newline with Ctrl+Enter', async () => {
+    const nextDetail: ChatSessionDetailDto = {
+      ...sessionDetail,
+      messages: [
+        ...sessionDetail.messages,
+        {
+          id: 103,
+          role: 'USER',
+          content: '按回车直接发送',
+          status: 'SUCCESS',
+          createdAt: '2024-05-20T10:22:00+08:00',
+          citations: [],
+        },
+        {
+          id: 104,
+          role: 'ASSISTANT',
+          content: '已收到。[1]',
+          status: 'SUCCESS',
+          createdAt: '2024-05-20T10:22:10+08:00',
+          citations: [{ ...citation, key: '104:1:110_2', markerIndex: 1, chunkId: '110_2', score: 0.89 }],
+        },
+      ],
+    };
+    const chatApi = createChatApi({
+      sendMessage: vi.fn(async () => nextDetail),
+    });
+
+    render(<DocumentChatPage chatApi={chatApi} settingsApi={settingsApi} initialDocumentId={1} />);
+
+    const textarea = await screen.findByLabelText('输入文档问题');
+    fireEvent.change(textarea, { target: { value: '第一行' } });
+    fireEvent.keyDown(textarea, { key: 'Enter', code: 'Enter', ctrlKey: true });
+    expect(textarea).toHaveValue('第一行\n');
+    expect(chatApi.sendMessage).not.toHaveBeenCalled();
+
+    fireEvent.change(textarea, { target: { value: '按回车直接发送' } });
+    fireEvent.keyDown(textarea, { key: 'Enter', code: 'Enter' });
+
+    await waitFor(() => {
+      expect(chatApi.sendMessage).toHaveBeenCalledWith(11, {
+        question: '按回车直接发送',
+      });
+    });
+  });
+
+  it('clears the composer immediately after sending while the answer is still generating', async () => {
+    let resolveMessage: (detail: ChatSessionDetailDto) => void = () => undefined;
+    const pendingMessage = new Promise<ChatSessionDetailDto>((resolve) => {
+      resolveMessage = resolve;
+    });
+    const chatApi = createChatApi({
+      sendMessage: vi.fn(() => pendingMessage),
+    });
+
+    render(<DocumentChatPage chatApi={chatApi} settingsApi={settingsApi} initialDocumentId={1} />);
+
+    const textarea = await screen.findByLabelText('输入文档问题');
+    fireEvent.change(textarea, { target: { value: '他怎么计算的' } });
+    fireEvent.keyDown(textarea, { key: 'Enter', code: 'Enter' });
+
+    await waitFor(() => {
+      expect(chatApi.sendMessage).toHaveBeenCalledWith(11, {
+        question: '他怎么计算的',
+      });
+    });
+    expect(textarea).toHaveValue('');
+
+    resolveMessage(sessionDetail);
   });
 
   it('shows citations for the latest answer by default and switches when an older marker is clicked', async () => {

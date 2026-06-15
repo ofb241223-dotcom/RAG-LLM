@@ -322,4 +322,43 @@ describe('DocumentDetailPage', () => {
     expect(flow.querySelectorAll('.active')).toHaveLength(1);
     expect(screen.getByText('文档正在解析、分块或向量化，请稍候')).toBeInTheDocument();
   });
+
+  it('refreshes chunk-derived metrics after a ready document initially returns no chunks', async () => {
+    const documentsApi: Pick<DocumentsApi, 'get' | 'chunks' | 'processing' | 'reprocess' | 'downloadUrl'> = {
+      get: vi.fn(async () => readyDocument),
+      chunks: vi.fn()
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([
+          {
+            document_id: '101',
+            chunk_id: '101-0',
+            source_name: '《深度学习原理与实践》第3章.pdf',
+            format: 'PDF',
+            chunk_index: 0,
+            text: 'A'.repeat(148),
+            page: 3,
+          },
+        ]),
+      processing: vi.fn(async () => readySteps),
+      reprocess: vi.fn(async () => readyDocument),
+      downloadUrl: vi.fn((id) => `/api/documents/${id}/download`),
+    };
+
+    render(
+      <DocumentDetailPage
+        documentId={101}
+        documentsApi={documentsApi}
+        settingsApi={{ get: vi.fn(async () => settings) }}
+        onAskDocument={() => undefined}
+        onBack={() => undefined}
+      />,
+    );
+
+    await waitFor(() => expect(documentsApi.chunks).toHaveBeenCalledTimes(1));
+    expect(screen.getAllByText('0').length).toBeGreaterThan(0);
+
+    await waitFor(() => expect(documentsApi.chunks).toHaveBeenCalledTimes(2), { timeout: 900 });
+    expect(screen.getAllByText('148').length).toBeGreaterThan(0);
+    expect(screen.getByText('101-0')).toBeInTheDocument();
+  });
 });

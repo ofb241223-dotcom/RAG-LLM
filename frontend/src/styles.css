@@ -113,51 +113,6 @@ button {
   box-shadow: 0 12px 24px rgba(43, 89, 255, 0.22);
 }
 
-.security-card {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 86px;
-  align-items: center;
-  gap: 9px;
-  margin-top: auto;
-  min-height: 171px;
-  padding: 18px 12px 14px 17px;
-  overflow: hidden;
-  background: linear-gradient(145deg, #f1f7ff, #ffffff);
-  border: 1px solid #dbe8fb;
-  border-radius: 8px;
-}
-
-.security-card strong {
-  display: block;
-  margin-bottom: 10px;
-  font-size: 14px;
-}
-
-.security-card p {
-  margin: 0 0 16px;
-  color: #7a849e;
-  font-size: 12px;
-  line-height: 1.6;
-}
-
-.security-card button {
-  padding: 0;
-  color: #2f6dff;
-  background: transparent;
-  border: 0;
-  font-size: 13px;
-  font-weight: 800;
-  text-decoration: none;
-  cursor: pointer;
-}
-
-.security-card img {
-  width: 102px;
-  height: 102px;
-  object-fit: contain;
-  transform: translateX(7px);
-}
-
 .workspace {
   min-width: 0;
   min-height: 0;
@@ -885,7 +840,7 @@ button {
 
 .activity-dialog-list {
   display: grid;
-  gap: 0;
+  gap: 22px;
   max-height: min(520px, calc(100dvh - 190px));
   margin: 0;
   padding: 2px 2px 2px 0;
@@ -903,15 +858,14 @@ button {
   display: grid;
   grid-template-columns: 26px minmax(0, 1fr);
   gap: 14px;
-  min-height: 58px;
-  padding-bottom: 14px;
+  min-height: 64px;
   color: #22304f;
 }
 
 .activity-dialog-list li:not(:last-child)::before {
   position: absolute;
   top: 26px;
-  bottom: -2px;
+  bottom: -24px;
   left: 12px;
   width: 1px;
   background: #dfe8f5;
@@ -944,9 +898,15 @@ button {
   background: #e54b4b;
 }
 
+.activity-dialog-item-body {
+  display: grid;
+  align-content: start;
+  gap: 9px;
+  min-width: 0;
+}
+
 .activity-dialog-list strong {
   display: block;
-  margin-bottom: 5px;
   overflow-wrap: anywhere;
   color: #18213a;
   font-size: 14px;
@@ -954,9 +914,11 @@ button {
 }
 
 .activity-dialog-list time {
+  display: block;
   color: #7b869d;
   font-size: 13px;
   font-weight: 800;
+  line-height: 1.35;
 }
 
 .dashboard-alert,
@@ -3502,6 +3464,20 @@ button {
   border-radius: 8px;
 }
 
+.current-document-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+}
+
+.compact-action {
+  height: 36px;
+  padding: 0 12px;
+  white-space: nowrap;
+}
+
 .current-document-content {
   gap: 12px;
   min-width: 0;
@@ -3553,6 +3529,15 @@ button {
   background: #f8fbff;
   border: 1px dashed #d3e1f6;
   border-radius: 8px;
+}
+
+.compact-empty-state {
+  min-height: 160px;
+}
+
+.chat-scroll-anchor {
+  width: 100%;
+  height: 1px;
 }
 
 .qa-message-body {
@@ -3645,6 +3630,63 @@ button {
   margin: 0;
   color: #17203a;
   font-size: 18px;
+}
+
+.chat-session-dialog {
+  gap: 16px;
+  width: min(620px, calc(100vw - 32px));
+}
+
+.chat-session-dialog-list {
+  display: grid;
+  gap: 10px;
+  max-height: min(460px, calc(100dvh - 220px));
+  overflow: auto;
+  scrollbar-width: none;
+}
+
+.chat-session-dialog-list::-webkit-scrollbar {
+  display: none;
+}
+
+.chat-session-dialog-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 14px;
+  color: #17203a;
+  text-align: left;
+  background: #ffffff;
+  border: 1px solid #dfe7f2;
+  border-radius: 8px;
+}
+
+.chat-session-dialog-item:hover,
+.chat-session-dialog-item.active {
+  border-color: #9eb9ff;
+  box-shadow: 0 10px 24px rgba(47, 108, 255, 0.12);
+}
+
+.chat-session-dialog-item span {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.chat-session-dialog-item strong {
+  overflow: hidden;
+  font-size: 14px;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-session-dialog-item small {
+  color: #75829c;
+  font-size: 12px;
+  font-weight: 800;
 }
 
 .document-citation-panel small {
@@ -4495,26 +4537,13 @@ input[type='number']::-webkit-inner-spin-button {
   }
 
   .brand span,
-  .nav-item span,
-  .security-card div {
+  .nav-item span {
     display: none;
   }
 
   .nav-item {
     justify-content: center;
     padding: 0;
-  }
-
-  .security-card {
-    grid-template-columns: 1fr;
-    min-height: auto;
-    padding: 8px;
-  }
-
-  .security-card img {
-    width: 58px;
-    height: 58px;
-    transform: none;
   }
 
   .stats-grid {

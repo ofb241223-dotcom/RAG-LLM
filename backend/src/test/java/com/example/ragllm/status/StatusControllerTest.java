@@ -58,4 +58,13 @@ class StatusControllerTest {
                 .andExpect(header().string("Access-Control-Allow-Origin", "http://127.0.0.1:5176"))
                 .andExpect(header().string("Access-Control-Allow-Methods", org.hamcrest.Matchers.containsString("PUT")));
     }
+
+    @Test
+    void apiEndpointsAllowLanViteOriginsForSshDevelopment() throws Exception {
+        mockMvc.perform(options("/api/status")
+                        .header("Origin", "http://192.168.15.1:5176")
+                        .header("Access-Control-Request-Method", "GET"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Access-Control-Allow-Origin", "http://192.168.15.1:5176"));
+    }
 }

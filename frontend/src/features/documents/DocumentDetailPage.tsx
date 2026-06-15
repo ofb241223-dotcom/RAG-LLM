@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import rehypeKatex from 'rehype-katex';
 import rehypeRaw from 'rehype-raw';
@@ -302,11 +302,13 @@ export function DocumentDetailPage({
   const [error, setError] = useState<string | undefined>();
   const [refreshing, setRefreshing] = useState(false);
   const [showAllChunks, setShowAllChunks] = useState(false);
+  const readyChunkRefreshAttempts = useRef(0);
 
   useEffect(() => {
     let mounted = true;
     setLoading(!initialDocument);
     setError(undefined);
+    readyChunkRefreshAttempts.current = 0;
 
     Promise.allSettled([documentsApi.get(documentId), documentsApi.processing(documentId), documentsApi.chunks(documentId), settingsApi.get()])
       .then(([documentResult, stepsResult, chunksResult, settingsResult]) => {
@@ -346,6 +348,10 @@ export function DocumentDetailPage({
   }, [documentId, documentsApi, initialDocument, settingsApi]);
 
   useEffect(() => {
+    readyChunkRefreshAttempts.current = 0;
+  }, [documentId]);
+
+  useEffect(() => {
     if (!document || isTerminalStatus(document.status)) {
       return undefined;
     }
@@ -381,6 +387,38 @@ export function DocumentDetailPage({
       window.clearTimeout(timer);
     };
   }, [document, documentId, documentsApi]);
+
+  useEffect(() => {
+    if (!document || document.status !== 'READY' || needsReprocess(document)) {
+      return undefined;
+    }
+
+    const expectedChunkCount = getDisplayChunkCount(document);
+    if (expectedChunkCount <= 0 || documentChunks.length >= expectedChunkCount) {
+      readyChunkRefreshAttempts.current = 0;
+      return undefined;
+    }
+    if (readyChunkRefreshAttempts.current >= 6) {
+      return undefined;
+    }
+
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      readyChunkRefreshAttempts.current += 1;
+      documentsApi.chunks(documentId)
+        .then((chunks) => {
+          if (!cancelled) setDocumentChunks(chunks);
+        })
+        .catch(() => {
+          if (!cancelled) setDocumentChunks([]);
+        });
+    }, 500);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [document, documentChunks.length, documentId, documentsApi]);
 
   const detail = useMemo(() => {
     if (!document) return null;

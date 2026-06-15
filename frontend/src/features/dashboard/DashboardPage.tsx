@@ -328,7 +328,7 @@ export function DashboardPage({ documentsApi = defaultDocumentsApi, chatApi = de
               {allActivities.length > 0 ? allActivities.map((activity) => (
                 <li className={activity.tone} key={activity.id}>
                   <span />
-                  <div>
+                  <div className="activity-dialog-item-body">
                     <strong>{activity.label}</strong>
                     <time>{activity.time}</time>
                   </div>
@@ -336,7 +336,7 @@ export function DashboardPage({ documentsApi = defaultDocumentsApi, chatApi = de
               )) : (
                 <li className="blue">
                   <span />
-                  <div>
+                  <div className="activity-dialog-item-body">
                     <strong>暂无动态</strong>
                     <time>等待文档上传或问答记录</time>
                   </div>
