@@ -9,7 +9,7 @@ from rag_service.documents.parsers import (
     DocDocumentParser,
     DocxDocumentParser,
     ExcelDocumentParser,
-    MinerUPdfParser,
+    MinerUDocumentParser,
     PdfDocumentParser,
     TxtDocumentParser,
     _clean_mineru_markdown,
@@ -238,7 +238,7 @@ def test_mineru_pdf_parser_uploads_polls_and_reads_full_markdown() -> None:
             return FakeResponse(content=buffer.getvalue())
 
     session = FakeSession()
-    parser = MinerUPdfParser(
+    parser = MinerUDocumentParser(
         api_token="token",
         base_url="https://mineru.test",
         timeout_seconds=10,

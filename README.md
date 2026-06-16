@@ -306,7 +306,8 @@ flowchart LR
     BE -->|JDBC| DB[(MySQL)]
     BE -->|File Storage| UPLOADS[(uploads)]
     BE -->|HTTP| RAG[FastAPI RAG Service]
-    RAG -->|Parse PDF| MINERU[MinerU API]
+    RAG -->|PDF / Word / Excel 解析| MINERU[MinerU API]
+    RAG -->|TXT 与解析回退| LOCAL[Local Parsers]
     RAG -->|Embedding / Chat| MODEL[Gemini / OpenRouter]
     RAG -->|Vector Index| CHROMA[(Chroma)]
 ```
@@ -315,7 +316,7 @@ flowchart LR
 
 1. 前端负责页面渲染、交互、文档上传、问答输入和结果展示。
 2. Spring Boot 后端负责业务接口、MySQL 持久化、文件落盘和调用 RAG 服务。
-3. RAG 服务负责文档解析、文本分块、Embedding、向量检索和问答生成。
+3. RAG 服务负责文档解析、文本分块、Embedding、向量检索和问答生成。PDF、Word 和 Excel 会优先尝试 MinerU API，失败或未配置时回退到本地解析；TXT 直接走本地文本解析。
 4. MySQL 保存业务数据，Chroma 保存向量索引，原始文件保存在本地上传目录。
 
 ---

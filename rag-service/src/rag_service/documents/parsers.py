@@ -32,7 +32,7 @@ class DocumentParsingError(ValueError):
     """Raised when bytes have the right extension but cannot be parsed."""
 
 
-class MinerUPdfParser:
+class MinerUDocumentParser:
     def __init__(
         self,
         *,
@@ -180,7 +180,7 @@ def _status_code(response: object) -> int:
 
 
 def _parse_with_mineru(
-    mineru_parser: MinerUPdfParser | None,
+    mineru_parser: MinerUDocumentParser | None,
     content: bytes,
     *,
     source_name: str,
@@ -212,7 +212,7 @@ class TxtDocumentParser:
 class PdfDocumentParser:
     supported_formats = (PDF,)
 
-    def __init__(self, *, ocr_timeout_seconds: int = 180, ocr_dpi: int = 180, mineru_parser: MinerUPdfParser | None = None) -> None:
+    def __init__(self, *, ocr_timeout_seconds: int = 180, ocr_dpi: int = 180, mineru_parser: MinerUDocumentParser | None = None) -> None:
         self.ocr_timeout_seconds = ocr_timeout_seconds
         self.ocr_dpi = ocr_dpi
         self.mineru_parser = mineru_parser
@@ -325,7 +325,7 @@ class PdfDocumentParser:
 class DocxDocumentParser:
     supported_formats = (DOCX,)
 
-    def __init__(self, *, mineru_parser: MinerUPdfParser | None = None) -> None:
+    def __init__(self, *, mineru_parser: MinerUDocumentParser | None = None) -> None:
         self.mineru_parser = mineru_parser
 
     def can_parse(self, format_name: str) -> bool:
@@ -375,7 +375,7 @@ def _normalize_docx_cell(text: str) -> str:
 class ExcelDocumentParser:
     supported_formats = (XLSX, XLS)
 
-    def __init__(self, *, mineru_parser: MinerUPdfParser | None = None) -> None:
+    def __init__(self, *, mineru_parser: MinerUDocumentParser | None = None) -> None:
         self.mineru_parser = mineru_parser
 
     def can_parse(self, format_name: str) -> bool:
@@ -442,7 +442,7 @@ def _normalize_excel_cell(value: object) -> str:
 class DocDocumentParser:
     supported_formats = (DOC,)
 
-    def __init__(self, *, timeout_seconds: int = 30, mineru_parser: MinerUPdfParser | None = None) -> None:
+    def __init__(self, *, timeout_seconds: int = 30, mineru_parser: MinerUDocumentParser | None = None) -> None:
         self.timeout_seconds = timeout_seconds
         self.mineru_parser = mineru_parser
 
@@ -516,7 +516,7 @@ def create_default_parser_registry(
 ) -> ParserRegistry:
     mineru_parser = None
     if mineru_enabled:
-        mineru_parser = MinerUPdfParser(
+        mineru_parser = MinerUDocumentParser(
             api_token=mineru_api_token,
             base_url=mineru_api_base_url,
             model_version=mineru_model_version,
@@ -540,7 +540,7 @@ __all__ = [
     "DocxDocumentParser",
     "DocumentParsingError",
     "ExcelDocumentParser",
-    "MinerUPdfParser",
+    "MinerUDocumentParser",
     "PdfDocumentParser",
     "TxtDocumentParser",
     "create_default_parser_registry",
